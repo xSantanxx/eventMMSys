@@ -13,7 +13,6 @@ function App() {
 
   return (
     <div className='border-2 border-solid bg-sky-200 w-screen h-screen'>
-      <p>{message}</p>
     </div>
   )
 }
