@@ -10,6 +10,7 @@ app.use(bodyParser.urlencoded({extended: true}));
 
 const PORT = process.env.PORT;
 
+// initial connection
 app.get('/', async (req, res) => {
     try{
         const server = await db.query('SELECT * FROM user0');
@@ -20,7 +21,7 @@ app.get('/', async (req, res) => {
     }
 });
 
-
+//server connection
 app.listen(PORT, (e) => {
     if(!e){
         console.log(`Server is running on ${PORT}`)
