@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const url = require('url');
 const qrcode = require('qrcode');
+const qr = require('qr-image');
+const fs = require('fs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const db = require('./db')
@@ -82,41 +84,62 @@ app.get('/:id', async (req, res) => {
 })
 
 app.post('/:id/register',[
-    check('name','Name length should be 12 to 30 characters')
-        .isLength({min: 12, max: 30}),
+    check('name','Name length should be 10 to 30 characters')
+        .isLength({min: 10, max: 30}),
     check('email', 'Email length should be 20 to 50 characters')
         .isLength({min: 20, max: 50}),
 ], async (req, res) => {
 
     const errors = validationResult(req);
     if(!errors.isEmpty()){
-        res.status(400).send('Bad Request');
+        res.status(400).send(errors);
     }
     try{
-        const checkServer = await db.query(`SELECT EXISTS(SELECT 1 FROM events WHERE id=${req.body.id})`)
-        if(checkServer){
-            const token = crypto.randomBytes(50).toString('hex');
 
-            const server = await db.query(`INSERT INTO attendees (name, email, event_id, qr_token)
-                VALUES('${req.body.name}', '${req.body.email}', '${req.body.id}', '${token}')`);
+        const id = req.params['id'];
 
-            res.status(201).send('Created');
+        const q = `SELECT EXISTS(SELECT 1 FROM events WHERE id = $1)`
+        const v = [id];
 
-            qrcode.toDataURL(token, function(err, url){
+        const checkServer = await db.query(q,v);
+        console.log(checkServer.rows[0].exists);
 
-                const mailOptions = {
-                    from: `${process.env.userEm}`,
-                    to: `${req.body.email}`,
+        if(checkServer.rows[0].exists === true){
+            const token = crypto.randomBytes(16).toString('hex');
+            const attendeesId = crypto.randomBytes(16).toString('hex');
+
+            const query = 'INSERT INTO attendees (id,name, email, event_id, qr_token, checked_in) VALUES ($1, $2, $3, $4, $5, $6)'
+            const values = [attendeesId,req.body.name, req.body.email, id, token, false]
+
+            const server = await db.query(query, values);
+
+            const sendEmail = process.env.userEm;
+
+            const dataToSend  = await qrcode.toBuffer(token);
+
+            const mailOptions = {
+                    from: `${sendEmail}`,
+                    to: `${values[2]}`,
                     subject: `Confirmation Email`,
-                    text: `Here's your QR Code to be scanned in${url}`
+                    html: `<p>Here's your QR Code to be scanned in </p>
+                    <img src="cid:codeID" alt="code">`,
+                    attachments: [{
+                        filename: 'codeID.png',
+                        content: dataToSend,
+                        cid: 'codeID'
+                    }]
                 };
 
                 transporter.sendMail(mailOptions, function(err,info){
                     if(err){
                         console.log(err);
+                    } else {
+                        console.log('Email sent: ' + info.response);
                     }
                 })
-            })
+
+            res.status(201).send('Created');
+
         } else {
             res.status(400).send('Not Found');
         }
