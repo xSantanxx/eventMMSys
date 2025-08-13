@@ -1,15 +1,19 @@
 const {check, validationResult} = require('express-validator')
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
+const path = require('path');
+const url = require('url');
 const qrcode = require('qrcode');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const db = require('./db')
 const app = express();
 
 app.use(cors())
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended: true}));
+app.use(express.json());
+app.use(express.urlencoded({extended: true}));
+app.set('views', path.join(__dirname));
+app.set('view engine', 'ejs')
 
 const PORT = process.env.PORT;
 
@@ -33,18 +37,25 @@ app.post('/addEvent', [
         .isISO8601().toDate(),
     
 ], async (req, res) => {
+
     const errors = validationResult(req);
     if(!errors.isEmpty()){
-        res.status(400);
+        res.status(400).send(errors);
     } else {
         try{
-            const server = await db.query(`INSERT INTO events (name, date, description, created_at) 
-            VALUES ('${req.body.name}', '${req.body.date}', '${req.body.description}', '${req.body.created_at}')`)
+
+            const token = crypto.randomBytes(16).toString('hex');
+
+            const query = 'INSERT INTO events (id ,name, date, description, created_at) VALUES ($1, $2, $3, $4, $5)'
+            const values = [token,req.body.name, req.body.date, req.body.description, req.body.created_at];
+
+            const server = await db.query(query, values);
             
             res.status(201).send(server.rows);
 
         } catch(e) {
-            res.json({'error': e})
+            res.status(400).send(e);
+            console.log(e);
         }
         
     }
@@ -62,7 +73,8 @@ app.get('/getEvents', async (req, res) => {
 
 app.get('/:id', async (req, res) => {
     try{
-        const server = await db.query(`SELECT * FROM events WHERE ${req.body.id}`)
+        const id = req.params['id'];
+        const server = await db.query(`SELECT * FROM events WHERE id = '${id}'`)
         res.status(200).send(server.rows)
     } catch(e) {
         res.status(404).send(`This event doesn't exist`);
@@ -83,7 +95,6 @@ app.post('/:id/register',[
     try{
         const checkServer = await db.query(`SELECT EXISTS(SELECT 1 FROM events WHERE id=${req.body.id})`)
         if(checkServer){
-            const crypto = require('crypto');
             const token = crypto.randomBytes(50).toString('hex');
 
             const server = await db.query(`INSERT INTO attendees (name, email, event_id, qr_token)
