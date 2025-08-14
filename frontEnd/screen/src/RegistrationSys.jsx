@@ -23,28 +23,21 @@ function RegistrationSys(){
 
     const submitForm = async (e) => {
         e.preventDefault();
-
         try {
-        
             const methodOptions = {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({name: nameV, email: emailV})
             }
-
             const response = await fetch(`https://localhost:${import.meta.env.VITE_PORT}/:id/register`);
             const data = await response.json();
             console.log(data);
-
-
         } catch (err) {
-
             // setFade(!fade);
             // setTimeout(() => {
             //     setFade(false);
             // }, 1000)
         }
-
         setName('');
         setEmail('');
     }

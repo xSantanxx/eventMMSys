@@ -33,8 +33,8 @@ app.post('/addEvent', [
         .isLength({min: 12, max:40}),
     check('date', 'Date must be valid')
         .isDate(),
-    check('description', 'Description length must be greater 20')
-        .isLength({min: 20}),
+    check('description', 'Description length must be greater 10')
+        .isLength({min: 10}),
     check('created_at', 'Date must be valid')
         .isISO8601().toDate(),
     
@@ -53,7 +53,7 @@ app.post('/addEvent', [
 
             const server = await db.query(query, values);
             
-            res.status(201).send(server.rows);
+            res.status(201).send({message: 'Your event has been added'});
 
         } catch(e) {
             res.status(400).send(e);
