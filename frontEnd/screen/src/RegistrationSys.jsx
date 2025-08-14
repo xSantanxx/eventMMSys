@@ -29,7 +29,7 @@ function RegistrationSys(){
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({name: nameV, email: emailV})
             }
-            const response = await fetch(`https://localhost:${import.meta.env.VITE_PORT}/:id/register`);
+            const response = await fetch(`https://localhost:${import.meta.env.VITE_PORT}/:id/register`, methodOptions);
             const data = await response.json();
             console.log(data);
         } catch (err) {
