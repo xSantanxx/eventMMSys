@@ -42,7 +42,6 @@ const backPage = () => {
                         </button>
                         </div>
             </div>
-            {/* <div className='relative bg-rose-500 w-full h-24 flex items-center justify-center'><p>done</p></div> */}
             <Scanner onScan={checkIn}></Scanner>
         </div>
     )
