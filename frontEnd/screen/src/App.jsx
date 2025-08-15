@@ -2,7 +2,9 @@ import { use, useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Outlet } from 'react-router-dom';
 import './App.css'
 import RegistrationSys from './RegistrationSys';
+import Event from './Event'
 import { useParams } from 'react-router-dom';
+import Sign from './Sign';
 
 function App() {
   const [message, setMessage] = useState('');
@@ -11,12 +13,17 @@ function App() {
   const [regDes, setRegDes] = useState('');
   const [errPop, setErrPop] = useState(false);
   const [form, setForm] = useState(false);
+  const [names, setNames] = useState([]);
+  const [links, setLinks] = useState([]);
 
   async function addEvent(e){
     e.preventDefault();
 
     const fullDate = new Date().toJSON().slice(0,10).replace(/-/g, '-');
-    const fullDateWTime = new Date().toJSON();
+    const fullDateWTime = new Date().toJSON().slice(0,19).replace(/T/g, ' ');
+    const full = new Date().toJSON();
+
+    console.log(full);
 
     try {
       const postOptions = {
@@ -60,29 +67,28 @@ function App() {
     setForm(!form);
   }
 
+
   useEffect(() => {
     async function events(){
-      const box = document.getElementById('hub');
-
 
       const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/getEvents`);
       const data = await response.json();
-      console.log(data);
-      for(let i in data){
-        let pages = document.createElement('p');
-        pages.innerText = 'Post' + data[i].id;
-        box.appendChild(pages);
-      }
+      const names = data.map((e) => <Link key={e.id} to={`/${e.id}`}>{e.name}</Link>)
+      setNames(names);
     }
     events();
-  }, []);
+  });
+
+  const {id} = useParams();
+
+
 
 
   return (
     <div className='border-2 border-solid bg-rose-100 w-screen h-screen flex justify-center items-center'>
       <div className='absolute top-[22%] left-[18%]'>
-        <button onClick={startForm} className='border-2 border-solid rounded-full cursor-pointer
-        w-22 h-auto bg-green-500  hover:bg-green-600 hover:bg-green-300 hover:duration-300 ease-out'>Create</button></div>
+        <button onClick={startForm} className={` ${form ? "bg-red-500 hover:bg-red-700" : ""} border-2 border-solid rounded-full cursor-pointer
+        w-22 h-auto bg-green-500  hover:bg-green-600 hover:bg-green-300 hover:duration-300 ease-out`}>Create</button></div>
         {/* Pop for form */}
         <div className={`${form ? "opacity-100 visible" : "opacity-0"} transition-all invisible absolute bg-red-500 border-2 border-solid w-[35%]
         h-[33%] top-[15%] rounded-xl flex flex-col`}>
@@ -103,12 +109,15 @@ function App() {
         <div id='errorBox' className={`${errPop ? 'opacity-100 visible' : 'opacity-0' } invisible duration-300  *:my-4  flex flex-col overflow-x-auto rounded-xl bg-blue-500 border-2 border-solid absolute w-4/12 h-[25%] top-[30%]`}>
         </div>
       <div id='hub' className='bg-zinc-200 flex flex-col border-2 border-solid w-2/3 h-2/4 overflow-x-auto rounded-xl'>
-      <p className='my-2 mx-2'>done</p>
-      <Router>
-        <Routes>
-          <Route path='/:id/register' element={<RegistrationSys />}></Route>
-        </Routes>
-      </Router>
+        <Router>
+          <div className='flex flex-col'>{names}</div>
+          <Routes>
+            <Route path='/' element={''}></Route>
+            <Route path='/:id/*' element={<Event />}></Route>
+            <Route path='/:id/signin' element={<Sign />}></Route>
+            <Route path='/:id/register' element={<RegistrationSys />}></Route>
+          </Routes>
+        </Router>
       </div>
     </div>
   )

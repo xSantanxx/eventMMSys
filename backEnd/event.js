@@ -27,7 +27,6 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-
 app.post('/addEvent', [
     check('name', 'Name length should be 12 to 40 characters')
         .isLength({min: 12, max:40}),
@@ -73,6 +72,25 @@ app.get('/getEvents', async (req, res) => {
     
 });
 
+app.post('/:id/signin', async(req, res) => {
+    try{
+
+        const id = req.params['id'];
+        const qr = req.body.user;
+
+        const authserver = await db.query(`SELECT * FROM attendees WHERE qr_token = '${qr}'`)
+
+        if(authserver.rows[0].checked_in === true){
+            res.status(404).send(`You're already checked in`)
+        } else {
+            const server = await db.query(`UPDATE attendees SET checked_in = true WHERE qr_token = '${qr}'`)
+            res.status(200).send(`You're checked in`)
+        } 
+    } catch (err) {
+        res.status(404).send(err)
+    }
+})
+
 app.get('/:id', async (req, res) => {
     try{
         const id = req.params['id'];
@@ -96,14 +114,13 @@ app.post('/:id/register',[
     }
     try{
 
+
         const id = req.params['id'];
 
         const q = `SELECT EXISTS(SELECT 1 FROM events WHERE id = $1)`
         const v = [id];
 
         const checkServer = await db.query(q,v);
-        console.log(checkServer.rows[0].exists);
-
         if(checkServer.rows[0].exists === true){
             const token = crypto.randomBytes(16).toString('hex');
             const attendeesId = crypto.randomBytes(16).toString('hex');
