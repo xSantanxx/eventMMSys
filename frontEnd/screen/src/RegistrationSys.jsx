@@ -14,8 +14,18 @@ function RegistrationSys(){
     const [errMsg, setErrMsg] = useState('');
     const [errCode, setErrCode] = useState(0);
     const [formName, setFormName] = useState('');
+    const [eventName, setEventName] = useState('');
 
+    useEffect(() => {
+        async function eventInfo(){
+            const idurl = window.location.pathname;
+            const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
+            const data = await response.json();
 
+            setEventName(data[0].name)
+        }
+        eventInfo();
+    }, [])
 
     useEffect(() => {
         if(nameV.length > 0 && emailV.length > 0){
@@ -39,6 +49,7 @@ function RegistrationSys(){
 
             const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}/register`, methodOptions);
             const data = await response.json();
+            console.log(data);
             if('errors' in data){
                 const box = document.getElementById('errMsgs')
                 box.innerText = '';
@@ -51,8 +62,11 @@ function RegistrationSys(){
                 setTimeout(() => {
                     setFade(false)
                 }, 3000)
+            } else if ('success' in data) {
+                alert(data.success);
             } else {
-                alert(data)
+                let i = data.detail.split(' ');
+                alert('Email ' + i[4] + ' ' + i[5])
             }
         } catch (err) {
             console.log(err);
@@ -72,17 +86,17 @@ function RegistrationSys(){
 
 
     return(
-        <div className='absolute rounded-xl left-[25%] top-[15%] border-2 border-solid bg-red-500 w-2/5 h-2/4 top-5 my-5 mx-5'>
-            <div className='flex items-center bg-violet-500 w-full h-20 rounded-xl'>
+        <div className='absolute rounded-xl left-[30%] top-[15%] border-2 border-solid w-2/5 h-2/4 top-5 my-5 mx-5'>
+            <div className='flex items-center bg-sky-200 w-full h-20 rounded-t-lg overflow-y-auto'>
                 <div className='bottom-[95%] ml-2 absolute
-                '><button onClick={homePage} className='flex items-center justify-center bg-red-500 
+                '><button onClick={homePage} className='transition-all duration-300 hover:outline-2 hover:outline-red-500 flex items-center justify-center bg-red-500 
                 rounded-full w-4 h-4 cursor-pointer hover:bg-red-700'><p className='text-center text-white text-sm opacity-0 hover:opacity-50'>
                     x</p></button>
                     </div>
-                <p className='font-bold ml-5 text-2xl'>Form Registration</p>
-                <p className='font-bold text-2xl relative left-[35%]'></p>
+                <p className='font-bold ml-7 text-2xl mr-16'>Form Registration</p>
+                <div className='flex jusitfy-end-safe'><p className='font-bold text-xl'>{eventName}</p></div>
             </div>
-            <div className='flex flex-col rounded-xl border-2 border-solid bg-teal-500 w-full h-[84%]'>
+            <div className='flex flex-col rounded-xl bg-zinc-200 w-full h-[84%]'>
                 <form action="" onSubmit={submitForm}> 
                     <label className='text-base hover:text-white flex absolute top-[27%] ml-3' htmlFor="name">Name</label>
                     <input placeholder='John Doe' type="text" className='ml-3 absolute w-3/4 top-[33%] border-2 border-solid rounded-lg' value={nameV} onChange={e => setName(e.target.value)}/>

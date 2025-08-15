@@ -11,6 +11,8 @@ function Event() {
     const [desc, setDesc] = useState('');
     const [date, setDate] = useState('');
     const [time, setTime] = useState('');
+    const [reg, setReg] = useState(0);
+    const [sign, setSign] = useState(0);
 
     useEffect(() => {
         async function eventInfo(){
@@ -20,7 +22,6 @@ function Event() {
 
             const date = new Date(data[0].date);
             const time = new Date(data[0].created_at);
-            // console.log(time.toLocaleTimeString());
             
             const fullDate = date.toLocaleDateString('en-US')
             const fullTime = time.toLocaleTimeString('en-US')
@@ -29,11 +30,13 @@ function Event() {
             setDesc(data[0].description)
             setDate(fullDate)
             setTime(fullTime)
+            setReg(data[0].registered)
+            setSign(data[0].checked_in)
 
 
         }
         eventInfo();
-    }, [])
+    })
 
 const {id} = useParams();
 
@@ -45,18 +48,20 @@ const homeScreen = () => {
 
 
     return(
-        <div className='flex flex-col absolute rounded-xl bg-red-500 left-[32%] top-[23%] border-2 border-solid w-2/5 h-96
+        <div className='flex flex-col absolute rounded-xl bg-zinc-200 left-[32%] top-[23%] border-2 border-solid w-2/5 h-96
         '>
-            <div className='flex justify-center items-center bg-cyan-500 rounded-t-lg w-full h-24'>
-                <div className='hover:bg-red-700 duration-300 bg-red-500 flex items-center rounded-full justify-center absolute top-[2%] left-[2%] border-2 border-solid w-7'>
-                    <button onClick={homeScreen} className='cursor-pointer'><p className='duration-300 opacity-0 hover:opacity-50'>x</p></button>
+            <div className='flex justify-center items-center bg-sky-200 rounded-t-lg w-full h-24'>
+                <div className='hover:bg-red-700 duration-300 bg-red-500 flex items-center rounded-full justify-center absolute top-[2%] left-[2%] hover:outline-red-500 hover:outline-2 w-5'>
+                    <button onClick={homeScreen} className='cursor-pointer'><p className='text-center text-black text-sm duration-300 opacity-0 hover:opacity-50'>x</p></button>
                     </div>
-                <div><p>{name}</p></div>
+                <div><p className='font-bold text-2xl'>{name}</p></div>
             </div>
             <div className='my-5 mx-2 flex flex-col overflow-x-auto'>
                 <p className='text-2xl font-bold'>Description: {desc}</p>
                 <p className='my-15 text-2xl font-bold'>Date: {date}</p>
-                <p className='text-2xl font-bold'>Time: {time}</p>
+                <p className='mb-8 text-2xl font-bold'>Time: {time}</p>
+                <p className='my-5 text-2xl font-bold'>Registered: {reg}</p>
+                <p className='my-5 text-2xl font-bold'>Signed In: {sign}</p>
                 <Link to={`/${id}/register`}><div
                 className='border-1 justify-self-center rounded-xl flex justify-center duration-300 bg-green-500 hover:bg-green-700 hover:border-cyan-700
                 hover:border-2 border-solid w-20 px-2 mb-2'><button>Register</button></div></Link>

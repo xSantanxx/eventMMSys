@@ -84,6 +84,12 @@ app.post('/:id/signin', async(req, res) => {
             res.status(404).send(`You're already checked in`)
         } else {
             const server = await db.query(`UPDATE attendees SET checked_in = true WHERE qr_token = '${qr}'`)
+
+            const q = `UPDATE events SET checked_in = checked_in + 1 WHERE id = $1`
+            const v = [id];
+
+            const incServer = await db.query(q,v);
+
             res.status(200).send(`You're checked in`)
         } 
     } catch (err) {
@@ -111,10 +117,8 @@ app.post('/:id/register',[
     const errors = validationResult(req);
     if(!errors.isEmpty()){
         res.status(400).send(errors);
-    }
-    try{
-
-
+    } else {
+        try{
         const id = req.params['id'];
 
         const q = `SELECT EXISTS(SELECT 1 FROM events WHERE id = $1)`
@@ -134,10 +138,13 @@ app.post('/:id/register',[
 
             const dataToSend  = await qrcode.toBuffer(token);
 
+            const serverName = await db.query(`SELECT * FROM events WHERE id = '${id}'`)
+            const nameOfEvent = serverName.rows[0].name;
+
             const mailOptions = {
                     from: `${sendEmail}`,
                     to: `${values[2]}`,
-                    subject: `Confirmation Email`,
+                    subject: `Confirmation Email + ${nameOfEvent}`,
                     html: `<p>Here's your QR Code to be scanned in </p>
                     <img src="cid:codeID" alt="code">`,
                     attachments: [{
@@ -155,14 +162,19 @@ app.post('/:id/register',[
                     }
                 })
 
-            res.status(201).send('Created');
+                const q = `UPDATE events SET registered = registered + 1 WHERE id = $1`
+                const v = [id];
+
+                const incServer = await db.query(q,v);
+            res.status(201).send({success :'Created'});
 
         } else {
             res.status(400).send('Not Found');
         }
 
     } catch(e) {
-
+        res.status(400).send(e);
+    }
     }
 })
 
