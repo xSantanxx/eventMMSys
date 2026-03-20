@@ -13,10 +13,9 @@ const PORT = process.env.PORT;
 // initial connection
 app.get('/', async (req, res) => {
     try{
-        const server = await db.query('SELECT * FROM user0');
+        const server = await db.query('SELECT * FROM events');
         res.json(server.rows)
     } catch (e){
-        console.log(e);
         res.status(500).send('server error')
     }
 });

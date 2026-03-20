@@ -39,8 +39,6 @@ function RegistrationSys(){
     const submitForm = async (e) => {
         e.preventDefault();
         try {
-
-
             const methodOptions = {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -86,7 +84,7 @@ function RegistrationSys(){
 
 
     return(
-        <div className='absolute rounded-xl left-[30%] top-[15%] border-2 border-solid w-2/5 h-2/4 top-5 my-5 mx-5'>
+        <div className='absolute rounded-xl left-1/2 -translate-x-1/2 top-[-50%] border-2 border-solid w-[min(92vw,680px)] min-h-[420px] bg-zinc-200'>
             <div className='flex items-center bg-sky-200 w-full h-20 rounded-t-lg overflow-y-auto'>
                 <div className='bottom-[95%] ml-2 absolute
                 '><button onClick={homePage} className='transition-all duration-300 hover:outline-2 hover:outline-red-500 flex items-center justify-center bg-red-500 
@@ -96,14 +94,14 @@ function RegistrationSys(){
                 <p className='font-bold ml-7 text-2xl mr-16'>Form Registration</p>
                 <div className='flex jusitfy-end-safe'><p className='font-bold text-xl'>{eventName}</p></div>
             </div>
-            <div className='flex flex-col rounded-xl bg-zinc-200 w-full h-[84%]'>
-                <form action="" onSubmit={submitForm}> 
-                    <label className='text-base hover:text-white flex absolute top-[27%] ml-3' htmlFor="name">Name</label>
-                    <input placeholder='John Doe' type="text" className='ml-3 absolute w-3/4 top-[33%] border-2 border-solid rounded-lg' value={nameV} onChange={e => setName(e.target.value)}/>
-                    <label className='text-base hover:text-white flex absolute top-[54%]  mb-4 ml-3' htmlFor="email">Email</label>
-                    <input placeholder='johndoe@gmail.com' className='ml-3 absolute w-3/4 top-[60%]  border-2 border-solid rounded-lg' type="email" autoComplete='email' value={emailV} onChange={e => setEmail(e.target.value)}/>
+            <div className='flex flex-col rounded-b-xl bg-zinc-200 w-full h-[84%] px-4 py-5'>
+                <form action="" onSubmit={submitForm} className='flex flex-col gap-4'> 
+                    <label className='text-base font-semibold' htmlFor="name">Name</label>
+                    <input id='name' placeholder='John Doe' type="text" className='w-full border-2 border-solid rounded-lg px-3 py-2' value={nameV} onChange={e => setName(e.target.value)}/>
+                    <label className='text-base font-semibold' htmlFor="email">Email</label>
+                    <input id='email' placeholder='johndoe@gmail.com' className='w-full border-2 border-solid rounded-lg px-3 py-2' type="email" autoComplete='email' value={emailV} onChange={e => setEmail(e.target.value)}/>
                     <button type='submit' 
-                    className={`${color ? 'hover:bg-green-500 hover:duration-350' : 'hover:bg-red-500 hover:duration-350'} cursor-pointer border-2 border-solid w-23 h-12 rounded-xl bg-white absolute top-[85%] left-[40%]`}>Register</button>
+                    className={`${color ? 'hover:bg-green-500 hover:duration-350' : 'hover:bg-red-500 hover:duration-350'} mt-2 cursor-pointer border-2 border-solid w-full sm:w-40 h-12 rounded-xl bg-white self-start`}>Register</button>
                 </form>
             </div>
             <div className={`${fade ? 'visible' : 'invisible duration-300'} border-2 border-solid bg-red-500 
