@@ -14,17 +14,38 @@ function App() {
   const [errPop, setErrPop] = useState(false);
   const [form, setForm] = useState(false);
   const [names, setNames] = useState([]);
+  const [errMsgs, setErrMsgs] = useState([]);
   const [links, setLinks] = useState([]);
   const [evNumb, setEvNumb] = useState(1);
+
+  const loadEvents = async () => {
+    try {
+      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/getEvents`);
+      if (!response.ok) {
+        throw new Error(`Unable to load events: ${response.status}`);
+      }
+      const data = await response.json();
+      const names = data.map((e, i) => (
+        <Link
+          key={e.id}
+          to={`/${e.id}`}
+          className='w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-left hover:bg-zinc-100 transition-colors'
+        >
+          {i + 1}. {e.name}
+        </Link>
+      ));
+      setNames(names);
+    } catch (err) {
+      console.log(err);
+    }
+  };
 
   async function addEvent(e){
     e.preventDefault();
 
-    const fullDate = new Date().toJSON().slice(0,10).replace(/-/g, '-');
-    const fullDateWTime = new Date().toJSON().slice(0,19).replace(/T/g, ' ');
-    const full = new Date().toJSON();
-
-    console.log(full);
+    const now = new Date();
+    const fullDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const createdAtIso = now.toISOString();
 
     try {
       const postOptions = {
@@ -33,29 +54,26 @@ function App() {
         body: JSON.stringify({name: regName,
           date: fullDate,
           description: regDes,
-          created_at: fullDateWTime
+          created_at: createdAtIso
         })
       };
       const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/addEvent`, postOptions)
       const data = await response.json();
+      console.log(data);
       if('errors' in data){
-        const box = document.getElementById('errorBox')
-        box.innerText = '';
-        for(let i = 0; i < data.errors.length; i++){
-          const text = document.createElement('p');
-          text.innerText = data.errors[i].msg;
-          box.appendChild(text);
-        }
-        setErrPop(!errPop);
+        setErrMsgs(data.errors.map((err) => err.msg));
+        setErrPop(true);
         setRegName('');
         setRegDes('');
         setTimeout(() => {
           setErrPop(false);
         }, 3000);
       } else {
+        setErrMsgs([]);
         alert(data.message);
         setRegName('');
         setRegDes('');
+        await loadEvents();
       }
     } catch (err) {
       console.log(err);
@@ -70,15 +88,8 @@ function App() {
 
 
   useEffect(() => {
-    async function events(){
-
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/getEvents`);
-      const data = await response.json();
-      const names = data.map((e, i) => <Link key={e.id} to={`/${e.id}`}>{i} {e.name}</Link>)
-      setNames(names);
-    }
-    events();
-  });
+    loadEvents();
+  }, []);
 
   const {id} = useParams();
 
@@ -87,11 +98,8 @@ function App() {
 
   return (
     <div className='border-2 border-solid bg-rose-100 w-screen h-screen flex justify-center items-center'>
-      <div className='absolute top-[30%] left-[39%]'>
-        <button onClick={startForm} className={` ${form ? "bg-red-500 hover:bg-red-700" : ""} rounded-full cursor-pointer
-        w-22 h-auto bg-green-500 outline-2 hover:outline-2 hover:outline-emerald-400 hover:bg-green-400 hover:duration-300 ease-out`}>Create</button></div>
         {/* Pop for form */}
-        <div className={`${form ? "opacity-100 visible" : "opacity-0"} transition-all invisible absolute bg-zinc-200 border-2 border-solid w-[32%]
+        <div className={`${form ? "opacity-100 visible" : "opacity-0"} z-100 transition-all invisible absolute bg-zinc-200 border-2 border-solid w-[32%]
         h-[33%] top-[15%] rounded-xl flex flex-col`}>
           <div className='duration-300 relative w-7 mx-3 mt-2 rounded-full flex justify-center
           bg-red-500 hover:bg-red-600 hover:outline-2 hover:outline-red-500'>
@@ -112,10 +120,26 @@ function App() {
           <p className='font-bold text-2xl my-2'>Errors</p>
         </div>
         <div id='errorBox' className={`${errPop ? 'opacity-100 visible' : 'opacity-0' } invisible duration-300  *:my-4  flex flex-col overflow-x-auto rounded-xl bg-blue-500 border-2 border-solid absolute w-4/12 h-[25%] top-[30%]`}>
+          {errMsgs.map((msg, idx) => (
+            <p key={`${msg}-${idx}`}>{msg}</p>
+          ))}
         </div>
-      <div id='hub' className='mt-4 bg-zinc-200 flex flex-col border-2 border-solid w-auto h-auto overflow-x-auto rounded-xl'>
+      <div id='hub' className={`${form ? "opacity-0 hidden" : "opacity-100"} relative bg-zinc-200 flex flex-col border-2 border-solid rounded-xl min-w-[360px] min-h-[140px] w-fit h-fit max-h-[70vh] p-4`}>
+        <div className='w-full flex justify-end mb-3'>
+          <button onClick={startForm} className={`${form ? "bg-red-500 hover:bg-red-700" : ""} rounded-full cursor-pointer
+          w-22 h-auto bg-green-500 outline-2 hover:outline-2 hover:outline-emerald-400 hover:bg-green-400 hover:duration-300 ease-out`}>Create</button>
+        </div>
         <Router>
-          <div className='flex flex-col items-center w-full font-bold font-stretch-extra-expanded'>{names}</div>
+          <div className={`${form ? "opacity-0" : "opacity-100"} transition-all duration-300`}>
+          <div className={`w-full mb-2`}>
+            <p className='text-xl font-bold'>Events</p>
+          </div>
+          <div className='flex flex-col items-start gap-2 w-full font-bold overflow-y-auto pr-1'>
+            {names.length > 0 ? names : (
+              <p className='w-full text-left text-zinc-500 font-normal'>No events yet. Click Create to add one.</p>
+            )}
+          </div>
+          </div>
           <Routes>
             <Route path='/' element={''}></Route>
             <Route path='/:id/*' element={<Event />}></Route>

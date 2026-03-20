@@ -52,7 +52,7 @@ app.post('/addEvent', [
 
             const server = await db.query(query, values);
             
-            res.status(201).send({message: 'Your event has been added'});
+            res.status(201).send({message: 'Your event has been added', id: token});
 
         } catch(e) {
             res.status(400).send(e);
@@ -64,7 +64,7 @@ app.post('/addEvent', [
 
 app.get('/getEvents', async (req, res) => {
     try{
-        const server = await db.query(`SELECT * FROM events`)
+        const server = await db.query(`SELECT * FROM events;`)
         res.status(200).send(server.rows);
     } catch(e) {
         res.json({'error': e})
