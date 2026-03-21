@@ -1,9 +1,6 @@
-import { useParams } from 'react-router-dom';
 import './Event.css'
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Outlet } from 'react-router-dom';
-import RegistrationSys from './RegistrationSys';
-import Sign from './Sign';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 
 function Event() {
@@ -14,10 +11,19 @@ function Event() {
     const [reg, setReg] = useState(0);
     const [sign, setSign] = useState(0);
 
+    const location = useLocation();
+    const navigate = useNavigate();
+    const eventId = location.state?.eventId || sessionStorage.getItem('selectedEventId');
+
     useEffect(() => {
+        if (!eventId) {
+            navigate('/');
+            return;
+        }
+        sessionStorage.setItem('selectedEventId', eventId);
+
         async function eventInfo(){
-            const idurl = window.location.pathname;
-            const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
+            const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${eventId}`);
             const data = await response.json();
 
             const date = new Date(data[0].date);
@@ -40,22 +46,20 @@ function Event() {
 
         }
         eventInfo();
-    }, [])
-
-const {id} = useParams();
-
-const navigate = useNavigate();
+    }, [eventId, navigate])
 
 const homeScreen = () => {
+    sessionStorage.removeItem('selectedEventId');
     navigate(`/`);
 }
 
 
     return(
-        <div className='flex flex-col absolute rounded-xl bg-zinc-200 left-1/2 -translate-x-1/2 top-[-180%] border-2 border-solid w-[min(92vw,680px)] min-h-[420px]'>
-            <div className='flex justify-center items-center bg-sky-200 rounded-t-lg w-full h-24'>
-                <div className='hover:bg-red-700 duration-300 bg-red-500 flex items-center rounded-full justify-center absolute top-[2%] left-[2%] hover:outline-red-500 hover:outline-2 w-5'>
-                    <button onClick={homeScreen} className='cursor-pointer'><p className='text-center text-black text-sm duration-300 opacity-0 hover:opacity-50'>x</p></button>
+        <div className='fixed inset-0 z-50 bg-zinc-950/70 flex items-center justify-center p-4' onClick={homeScreen}>
+        <div className='flex flex-col relative rounded-xl bg-zinc-900 text-zinc-100 border-2 border-solid border-zinc-800 w-[min(92vw,680px)] min-h-[420px]' onClick={(e) => e.stopPropagation()}>
+            <div className='flex justify-center items-center bg-sky-900/40 rounded-t-lg w-full h-24'>
+                <div className='hover:bg-red-500 duration-300 bg-red-600 flex items-center rounded-full justify-center absolute top-[2%] left-[2%] hover:outline-red-500 hover:outline-2 w-5'>
+                    <button onClick={homeScreen} className='cursor-pointer'><p className='text-center text-zinc-50 text-sm duration-300 opacity-0 hover:opacity-50'>x</p></button>
                     </div>
                 <div><p className='font-bold text-2xl'>{name}</p></div>
             </div>
@@ -66,22 +70,19 @@ const homeScreen = () => {
                 <p className='my-2 text-2xl font-bold'>Registered: {reg}</p>
                 <p className='my-2 text-2xl font-bold'>Signed In: {sign}</p>
                 <div className='mt-4 flex flex-col sm:flex-row gap-3'>
-                    <Link to={`/${id}/register`} className='w-full'>
-                        <button className='w-full border border-solid rounded-xl py-3 text-lg font-semibold duration-300 bg-green-500 hover:bg-green-700 hover:border-cyan-700 hover:border-2 cursor-pointer'>
+                    <Link to='/event/register' state={{ eventId }} className='w-full'>
+                        <button className='w-full border border-solid border-emerald-700/70 rounded-xl py-3 text-lg font-semibold duration-300 bg-emerald-600 hover:bg-emerald-500 hover:border-emerald-400 hover:border-2 cursor-pointer'>
                             Register
                         </button>
                     </Link>
-                    <Link to={`/${id}/signin`} className='w-full'>
-                        <button className='w-full border border-solid rounded-xl py-3 text-lg font-semibold duration-300 bg-green-500 hover:bg-green-700 hover:border-cyan-700 hover:border-2 cursor-pointer'>
+                    <Link to='/event/signin' state={{ eventId }} className='w-full'>
+                        <button className='w-full border border-solid border-emerald-700/70 rounded-xl py-3 text-lg font-semibold duration-300 bg-emerald-600 hover:bg-emerald-500 hover:border-emerald-400 hover:border-2 cursor-pointer'>
                             Sign in
                         </button>
                     </Link>
                 </div>
-                <Routes>
-                    <Route path='/:id/register' element={<RegistrationSys />}></Route>
-                    <Route path='/:id/signin' element={<Sign />}></Route>
-                </Routes>
             </div>
+        </div>
         </div>
     )
 }
