@@ -19,9 +19,18 @@ const allowedOrigins = [
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app');
+
+      if (isAllowed) {
         callback(null, true);
       } else {
+        console.warn('Blocked CORS request from:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -45,7 +54,12 @@ app.get('/health', async (req, res) => {
     await db.query('SELECT 1');
     res.status(200).json({ status: 'ok', database: 'connected' });
   } catch (error) {
-    res.status(503).json({ status: 'error', database: 'disconnected' });
+    console.error('Health check failed:', error.message);
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      message: error.message,
+    });
   }
 });
 
