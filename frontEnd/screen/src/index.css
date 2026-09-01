@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-accent: #8b5cf6;
+  --color-accent-soft: #ede9fe;
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-error: #e11d48;
+  --color-error-soft: #fff1f2;
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-border: #e2e8f0;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scaleY(0.95);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    max-height: 600px;
+  }
+}
+
+.animate-unfold {
+  animation: unfold 0.5s ease-out forwards;
+}

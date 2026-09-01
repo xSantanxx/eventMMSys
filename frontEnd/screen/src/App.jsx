@@ -1,131 +1,154 @@
-import { use, useEffect, useState } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Outlet } from 'react-router-dom';
-import './App.css'
-import RegistrationSys from './RegistrationSys';
-import Event from './Event'
-import { useParams } from 'react-router-dom';
-import Sign from './Sign';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Layout, Card, Button, Modal, FormField } from './components';
 
 function App() {
-  const [message, setMessage] = useState('');
-  const [fade, setFade] = useState(false);
   const [regName, setRegName] = useState('');
   const [regDes, setRegDes] = useState('');
-  const [errPop, setErrPop] = useState(false);
-  const [form, setForm] = useState(false);
-  const [names, setNames] = useState([]);
-  const [links, setLinks] = useState([]);
-  const [evNumb, setEvNumb] = useState(1);
+  const [errors, setErrors] = useState([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [events, setEvents] = useState([]);
+  const [hubReady, setHubReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  async function addEvent(e){
-    e.preventDefault();
-
-    const fullDate = new Date().toJSON().slice(0,10).replace(/-/g, '-');
-    const fullDateWTime = new Date().toJSON().slice(0,19).replace(/T/g, ' ');
-    const full = new Date().toJSON();
-
-    console.log(full);
-
+  async function loadEvents() {
     try {
-      const postOptions = {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name: regName,
-          date: fullDate,
-          description: regDes,
-          created_at: fullDateWTime
-        })
-      };
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/addEvent`, postOptions)
-      const data = await response.json();
-      if('errors' in data){
-        const box = document.getElementById('errorBox')
-        box.innerText = '';
-        for(let i = 0; i < data.errors.length; i++){
-          const text = document.createElement('p');
-          text.innerText = data.errors[i].msg;
-          box.appendChild(text);
-        }
-        setErrPop(!errPop);
-        setRegName('');
-        setRegDes('');
-        setTimeout(() => {
-          setErrPop(false);
-        }, 3000);
-      } else {
-        alert(data.message);
-        setRegName('');
-        setRegDes('');
-      }
-    } catch (err) {
-      console.log(err);
-    } finally {
-      setForm(false);
-    }
-  }
-
-  const startForm = () => {
-    setForm(!form);
-  }
-
-
-  useEffect(() => {
-    async function events(){
-
       const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/getEvents`);
       const data = await response.json();
-      const names = data.map((e, i) => <Link key={e.id} to={`/${e.id}`}>{i} {e.name}</Link>)
-      setNames(names);
+      if (!Array.isArray(data)) {
+        console.error('Failed to load events:', data);
+        return;
+      }
+      setEvents(data);
+    } catch (err) {
+      console.error('Failed to load events:', err);
     }
-    events();
-  });
+  }
 
-  const {id} = useParams();
+  useEffect(() => {
+    loadEvents();
+    const timer = setTimeout(() => setHubReady(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
+  async function addEvent(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setErrors([]);
 
+    const fullDate = new Date().toJSON().slice(0, 10);
+    const fullDateWTime = new Date().toJSON().slice(0, 19).replace(/T/g, ' ');
 
+    try {
+      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/addEvent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: regName,
+          date: fullDate,
+          description: regDes,
+          created_at: fullDateWTime,
+        }),
+      });
+      const data = await response.json();
+
+      if ('errors' in data) {
+        setErrors(data.errors.map((err) => err.msg));
+      } else {
+        setRegName('');
+        setRegDes('');
+        setFormOpen(false);
+        await loadEvents();
+      }
+    } catch (err) {
+      console.error(err);
+      setErrors(['Something went wrong. Please try again.']);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className='border-2 border-solid bg-rose-100 w-screen h-screen flex justify-center items-center'>
-      <div className='absolute top-[30%] left-[39%]'>
-        <button onClick={startForm} className={` ${form ? "bg-red-500 hover:bg-red-700" : ""} rounded-full cursor-pointer
-        w-22 h-auto bg-green-500 outline-2 hover:outline-2 hover:outline-emerald-400 hover:bg-green-400 hover:duration-300 ease-out`}>Create</button></div>
-        {/* Pop for form */}
-        <div className={`${form ? "opacity-100 visible" : "opacity-0"} transition-all invisible absolute bg-zinc-200 border-2 border-solid w-[32%]
-        h-[33%] top-[15%] rounded-xl flex flex-col`}>
-          <div className='duration-300 relative w-7 mx-3 mt-2 rounded-full flex justify-center
-          bg-red-500 hover:bg-red-600 hover:outline-2 hover:outline-red-500'>
-            <button onClick={() => {setForm(!form)}} className='hover:opacity-50 opacity-0 cursor-pointer'>x</button>
-            </div>
-          <form action="" onSubmit={addEvent}>
-            <p className='justify-self-center text-2xl font-bold'>Add Event</p>
-            <label className='text-base hover:text-white flex absolute top-[20%] ml-3' htmlFor="name">Name</label>
-                <input placeholder='John Doe' type="text" className='ml-3 absolute w-3/4 top-[27%] border-2 border-solid rounded-lg' value={regName} onChange={e => setRegName(e.target.value)}/>
-                <label className='text-base hover:text-white flex absolute top-[45%]  mb-4 ml-3' htmlFor="Description">Description</label>
-                <input placeholder='Enter Description of event' className='ml-3 absolute w-3/4 top-[53%]  border-2 border-solid rounded-lg' type="text" value={regDes} onChange={e => setRegDes(e.target.value)}/>
-                <button type='submit' 
-                className={`hover:bg-green-500 duration-300 cursor-pointer border-2 border-solid w-23 h-12 rounded-xl bg-white absolute top-[84%] left-[40%]`}>Register</button>
+    <Layout>
+      <div className="flex w-full flex-col items-center gap-6">
+        <Button onClick={() => setFormOpen(true)} size="lg">
+          Create Event
+        </Button>
+
+        <Modal
+          open={formOpen}
+          onClose={() => {
+            setFormOpen(false);
+            setErrors([]);
+          }}
+          title="Add Event"
+        >
+          <form onSubmit={addEvent} className="flex flex-col gap-4">
+            <FormField
+              id="event-name"
+              label="Name"
+              placeholder="Summer Networking Night"
+              value={regName}
+              onChange={(e) => setRegName(e.target.value)}
+            />
+            <FormField
+              id="event-description"
+              label="Description"
+              placeholder="Describe your event"
+              value={regDes}
+              onChange={(e) => setRegDes(e.target.value)}
+            />
+
+            {errors.length > 0 && (
+              <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
+                {errors.map((msg) => (
+                  <p key={msg} className="text-sm text-error">
+                    {msg}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? 'Creating...' : 'Create Event'}
+            </Button>
           </form>
-        </div>
-        {/* Error */}
-        <div className={` ${errPop ? 'opacity-100 visible' : 'opacity-0' }  invisible transition-all duration-300 flex justify-center absolute rounded-t-lg bg-blue-500 border-t-2 border-r-2 border-l-2 border-solid w-4/12 h-[6%] top-[25%] z-100`}>
-          <p className='font-bold text-2xl my-2'>Errors</p>
-        </div>
-        <div id='errorBox' className={`${errPop ? 'opacity-100 visible' : 'opacity-0' } invisible duration-300  *:my-4  flex flex-col overflow-x-auto rounded-xl bg-blue-500 border-2 border-solid absolute w-4/12 h-[25%] top-[30%]`}>
-        </div>
-      <div id='hub' className='mt-4 bg-zinc-200 flex flex-col border-2 border-solid w-auto h-auto overflow-x-auto rounded-xl'>
-        <Router>
-          <div className='flex flex-col items-center w-full font-bold font-stretch-extra-expanded'>{names}</div>
-          <Routes>
-            <Route path='/' element={''}></Route>
-            <Route path='/:id/*' element={<Event />}></Route>
-            <Route path='/:id/signin' element={<Sign />}></Route>
-            <Route path='/:id/register' element={<RegistrationSys />}></Route>
-          </Routes>
-        </Router>
+        </Modal>
+
+        <Card animate={hubReady} className="max-h-[28rem] overflow-y-auto">
+          <Card.Header>
+            <h1 className="text-xl font-semibold text-text">Events</h1>
+            <p className="text-sm text-text-muted">
+              {events.length} event{events.length !== 1 ? 's' : ''} available
+            </p>
+          </Card.Header>
+          <Card.Body className="p-0">
+            {events.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-text-muted">
+                No events yet. Create one to get started.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {events.map((event, i) => (
+                  <li key={event.id}>
+                    <Link
+                      to={`/${event.id}`}
+                      className="flex items-center gap-3 px-6 py-4 text-text transition-colors hover:bg-background"
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-primary">
+                        {i + 1}
+                      </span>
+                      <span className="font-medium">{event.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card.Body>
+        </Card>
       </div>
-    </div>
-  )
+    </Layout>
+  );
 }
 
-export default App
+export default App;

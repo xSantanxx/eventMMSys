@@ -1,123 +1,133 @@
 import { useEffect, useState } from 'react';
-import './RegistrationSys.css';
-import { useParams } from 'react-router-dom';
-import App from './App';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Outlet } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Layout, Card, Button, FormField } from './components';
 
+function RegistrationSys() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [eventName, setEventName] = useState('');
+  const [errors, setErrors] = useState([]);
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-function RegistrationSys(){
-
-    const [nameV, setName] = useState('');
-    const [emailV, setEmail] = useState('');
-    const [color, setColor] = useState(false);
-    const [fade, setFade] = useState(false);
-    const [errMsg, setErrMsg] = useState('');
-    const [errCode, setErrCode] = useState(0);
-    const [formName, setFormName] = useState('');
-    const [eventName, setEventName] = useState('');
-
-    useEffect(() => {
-        async function eventInfo(){
-            const idurl = window.location.pathname;
-            const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
-            const data = await response.json();
-
-            setEventName(data[0].name)
+  useEffect(() => {
+    async function loadEvent() {
+      try {
+        const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setEventName(data[0].name);
         }
-        eventInfo();
-    }, [])
-
-    useEffect(() => {
-        if(nameV.length > 0 && emailV.length > 0){
-            setColor(true);
-        } else {
-            setColor(false)
-        }
-    }, [nameV,emailV])
-
-
-    const submitForm = async (e) => {
-        e.preventDefault();
-        try {
-
-
-            const methodOptions = {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: nameV, email: emailV})
-            }
-
-            const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}/register`, methodOptions);
-            const data = await response.json();
-            console.log(data);
-            if('errors' in data){
-                const box = document.getElementById('errMsgs')
-                box.innerText = '';
-                for(let i = 0; i < data.errors.length; i++){
-                const text = document.createElement('p');
-                text.innerText = data.errors[i].msg;
-                box.appendChild(text);
-                }
-                setFade(!fade)
-                setTimeout(() => {
-                    setFade(false)
-                }, 3000)
-            } else if ('success' in data) {
-                alert(data.success);
-            } else {
-                let i = data.detail.split(' ');
-                alert('Email ' + i[4] + ' ' + i[5])
-            }
-        } catch (err) {
-            console.log(err);
-        } finally{
-            setName('');
-            setEmail('');
-        }
+      } catch (err) {
+        console.error(err);
+      }
     }
 
-    const {id} = useParams();
+    loadEvent();
+  }, [id]);
 
-    const navigate = useNavigate();
+  async function submitForm(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setErrors([]);
+    setSuccess('');
 
-    const homePage = () => {
-        navigate(`/${id}`)
+    try {
+      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email }),
+      });
+      const data = await response.json();
+
+      if ('errors' in data) {
+        setErrors(data.errors.map((err) => err.msg));
+      } else if ('success' in data) {
+        setSuccess('Registration successful! Check your email for a QR code.');
+        setName('');
+        setEmail('');
+      } else if (data.detail) {
+        setErrors([data.detail]);
+      } else {
+        setErrors(['Registration failed. Please try again.']);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrors(['Something went wrong. Please try again.']);
+    } finally {
+      setSubmitting(false);
     }
+  }
 
+  return (
+    <Layout>
+      <div className="flex w-full flex-col gap-4">
+        <Button variant="ghost" onClick={() => navigate(`/${id}`)} className="self-start">
+          ← Back to event
+        </Button>
 
-    return(
-        <div className='absolute rounded-xl left-[30%] top-[15%] border-2 border-solid w-2/5 h-2/4 top-5 my-5 mx-5'>
-            <div className='flex items-center bg-sky-200 w-full h-20 rounded-t-lg overflow-y-auto'>
-                <div className='bottom-[95%] ml-2 absolute
-                '><button onClick={homePage} className='transition-all duration-300 hover:outline-2 hover:outline-red-500 flex items-center justify-center bg-red-500 
-                rounded-full w-4 h-4 cursor-pointer hover:bg-red-700'><p className='text-center text-white text-sm opacity-0 hover:opacity-50'>
-                    x</p></button>
-                    </div>
-                <p className='font-bold ml-7 text-2xl mr-16'>Form Registration</p>
-                <div className='flex jusitfy-end-safe'><p className='font-bold text-xl'>{eventName}</p></div>
-            </div>
-            <div className='flex flex-col rounded-xl bg-zinc-200 w-full h-[84%]'>
-                <form action="" onSubmit={submitForm}> 
-                    <label className='text-base hover:text-white flex absolute top-[27%] ml-3' htmlFor="name">Name</label>
-                    <input placeholder='John Doe' type="text" className='ml-3 absolute w-3/4 top-[33%] border-2 border-solid rounded-lg' value={nameV} onChange={e => setName(e.target.value)}/>
-                    <label className='text-base hover:text-white flex absolute top-[54%]  mb-4 ml-3' htmlFor="email">Email</label>
-                    <input placeholder='johndoe@gmail.com' className='ml-3 absolute w-3/4 top-[60%]  border-2 border-solid rounded-lg' type="email" autoComplete='email' value={emailV} onChange={e => setEmail(e.target.value)}/>
-                    <button type='submit' 
-                    className={`${color ? 'hover:bg-green-500 hover:duration-350' : 'hover:bg-red-500 hover:duration-350'} cursor-pointer border-2 border-solid w-23 h-12 rounded-xl bg-white absolute top-[85%] left-[40%]`}>Register</button>
-                </form>
-            </div>
-            <div className={`${fade ? 'visible' : 'invisible duration-300'} border-2 border-solid bg-red-500 
-            relative bottom-[60%] left-[20%] 
-            w-[50%] h-1/3 rounded-xl flex justify-center flex`}>
-                <div id='errMsgs' className='bg-rose-500 border-2 border-solid w-full
-                h-1/2 relative rounded-xl flex justify-center items-center flex-wrap'>
-                    <div className='w-screen'></div>
+        <Card>
+          <Card.Header>
+            <h1 className="text-xl font-semibold text-text">Register</h1>
+            {eventName && (
+              <p className="text-sm text-text-muted">{eventName}</p>
+            )}
+          </Card.Header>
+
+          <Card.Body>
+            <p className="mb-5 text-sm text-text-muted">
+              Fill out the form below. You&apos;ll receive a QR code by email to check in at the event.
+            </p>
+
+            <form onSubmit={submitForm} className="flex flex-col gap-4">
+              <FormField
+                id="reg-name"
+                label="Name"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <FormField
+                id="reg-email"
+                label="Email"
+                type="email"
+                placeholder="johndoe@gmail.com"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+
+              {errors.length > 0 && (
+                <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
+                  {errors.map((msg) => (
+                    <p key={msg} className="text-sm text-error">
+                      {msg}
+                    </p>
+                  ))}
                 </div>
-            </div>
-        </div>
-    )
+              )}
+
+              {success && (
+                <div className="rounded-lg border border-success/20 bg-success-soft px-3 py-2">
+                  <p className="text-sm text-success">{success}</p>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={submitting || !name || !email}
+              >
+                {submitting ? 'Registering...' : 'Register'}
+              </Button>
+            </form>
+          </Card.Body>
+        </Card>
+      </div>
+    </Layout>
+  );
 }
 
-
-
-export default RegistrationSys
+export default RegistrationSys;
