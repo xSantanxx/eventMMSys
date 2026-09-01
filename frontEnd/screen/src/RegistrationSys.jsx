@@ -46,7 +46,11 @@ function RegistrationSys() {
       if ('errors' in data) {
         setErrors(data.errors.map((err) => err.msg));
       } else if ('success' in data) {
-        setSuccess('Registration successful! Check your email for a QR code.');
+        setSuccess(
+          data.emailSent === false
+            ? data.success
+            : 'Registration successful! Check your email for a QR code.'
+        );
         setName('');
         setEmail('');
       } else if (data.detail) {

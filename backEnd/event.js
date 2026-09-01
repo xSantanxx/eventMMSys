@@ -3,9 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const qrcode = require('qrcode');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const db = require('./db');
+const { sendRegistrationEmail, verifyEmailConfig } = require('./mail');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,18 +41,16 @@ app.use(express.urlencoded({ extended: true }));
 app.set('views', path.join(__dirname));
 app.set('view engine', 'ejs');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.userEm,
-    pass: process.env.userPass,
-  },
-});
-
 app.get('/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
-    res.status(200).json({ status: 'ok', database: 'connected' });
+    const emailStatus = await verifyEmailConfig();
+    res.status(200).json({
+      status: 'ok',
+      database: 'connected',
+      email: emailStatus.ok ? 'ready' : 'misconfigured',
+      emailMessage: emailStatus.ok ? undefined : emailStatus.message,
+    });
   } catch (error) {
     console.error('Health check failed:', error.message);
     res.status(503).json({
@@ -178,31 +176,25 @@ app.post(
       const serverName = await db.query('SELECT name FROM events WHERE id = $1', [id]);
       const nameOfEvent = serverName.rows[0].name;
 
-      const mailOptions = {
-        from: process.env.userEm,
-        to: values[2],
-        subject: `Confirmation Email for ${nameOfEvent}`,
-        html: `<p>Here's your QR Code to be scanned in </p>
-          <img src="cid:codeID" alt="code">`,
-        attachments: [
-          {
-            filename: 'codeID.png',
-            content: dataToSend,
-            cid: 'codeID',
-          },
-        ],
-      };
-
-      transporter.sendMail(mailOptions, (err, info) => {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log('Email sent: ' + info.response);
-        }
-      });
+      let emailSent = false;
+      try {
+        await sendRegistrationEmail({
+          to: values[2],
+          eventName: nameOfEvent,
+          qrBuffer: dataToSend,
+        });
+        emailSent = true;
+      } catch (emailError) {
+        console.error('Failed to send registration email:', emailError.message);
+      }
 
       await db.query('UPDATE events SET registered = registered + 1 WHERE id = $1', [id]);
-      res.status(201).send({ success: 'Created' });
+      res.status(201).send({
+        success: emailSent
+          ? 'Created'
+          : 'Registered, but the confirmation email could not be sent. Contact the event organizer.',
+        emailSent,
+      });
     } catch (error) {
       console.error(error);
       res.status(400).send({ error: 'Registration failed' });
