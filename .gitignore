@@ -24,4 +24,3 @@ dist-ssr
 *.sw?
 .env
 frontEnd/.DS_Store
-backEnd/.env.example
