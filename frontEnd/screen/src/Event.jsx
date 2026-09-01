@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, Card, Button } from './components';
+import { apiUrl } from './api/client';
 
 function Event() {
   const { id } = useParams();
@@ -19,7 +20,7 @@ function Event() {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
+        const response = await fetch(apiUrl(`/${id}`));
         const data = await response.json();
 
         if (!Array.isArray(data) || data.length === 0) {

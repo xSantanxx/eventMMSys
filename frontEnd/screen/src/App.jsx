@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout, Card, Button, Modal, FormField } from './components';
+import { apiUrl } from './api/client';
 
 function App() {
   const [regName, setRegName] = useState('');
@@ -13,7 +14,7 @@ function App() {
 
   async function loadEvents() {
     try {
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/getEvents`);
+      const response = await fetch(apiUrl('/getEvents'));
       const data = await response.json();
       if (!Array.isArray(data)) {
         console.error('Failed to load events:', data);
@@ -40,7 +41,7 @@ function App() {
     const fullDateWTime = new Date().toJSON().slice(0, 19).replace(/T/g, ' ');
 
     try {
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/addEvent`, {
+      const response = await fetch(apiUrl('/addEvent'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

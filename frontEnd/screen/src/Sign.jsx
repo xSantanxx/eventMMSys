@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { Layout, Card, Button } from './components';
+import { apiUrl } from './api/client';
 
 function Sign() {
   const { id } = useParams();
@@ -13,7 +14,7 @@ function Sign() {
     if (!result?.[0]?.rawValue) return;
 
     try {
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}/signin`, {
+      const response = await fetch(apiUrl(`/${id}/signin`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: result[0].rawValue }),

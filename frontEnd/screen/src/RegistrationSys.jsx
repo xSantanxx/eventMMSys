@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, Card, Button, FormField } from './components';
+import { apiUrl } from './api/client';
 
 function RegistrationSys() {
   const { id } = useParams();
@@ -15,7 +16,7 @@ function RegistrationSys() {
   useEffect(() => {
     async function loadEvent() {
       try {
-        const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}`);
+        const response = await fetch(apiUrl(`/${id}`));
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
           setEventName(data[0].name);
@@ -35,7 +36,7 @@ function RegistrationSys() {
     setSuccess('');
 
     try {
-      const response = await fetch(`http://localhost:${import.meta.env.VITE_PORT}/${id}/register`, {
+      const response = await fetch(apiUrl(`/${id}/register`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email }),
