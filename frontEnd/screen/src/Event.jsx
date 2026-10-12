@@ -1,21 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Layout, Card, Button } from './components';
-import { apiUrl, getPublicRegisterUrl, getToken } from './api/client';
+import { Layout, Card, Button, FormField } from './components';
+import {
+  apiFetch,
+  apiUrl,
+  getPublicRegisterUrl,
+  getToken,
+} from './api/client';
+import { attendeesToCsv, formatEventWhen } from './datetime';
 
-/** Organizer event dashboard: stats, share link, check-in. */
+/** Organizer event dashboard: schedule, share link, attendees, check-in. */
 function Event() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [timezone, setTimezone] = useState('UTC');
   const [registered, setRegistered] = useState(0);
   const [checkedIn, setCheckedIn] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copyState, setCopyState] = useState('');
+  const [attendees, setAttendees] = useState([]);
+  const [attendeeQuery, setAttendeeQuery] = useState('');
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
+  const [attendeesError, setAttendeesError] = useState('');
 
   const shareUrl = getPublicRegisterUrl(id);
 
@@ -41,8 +52,9 @@ function Event() {
         const event = data[0];
         setName(event.name);
         setDesc(event.description);
-        setDate(new Date(event.date).toLocaleDateString('en-US'));
-        setTime(new Date(event.created_at).toLocaleTimeString('en-US'));
+        setStartsAt(event.starts_at || event.date);
+        setEndsAt(event.ends_at || '');
+        setTimezone(event.timezone || 'UTC');
         setRegistered(event.registered);
         setCheckedIn(event.checked_in);
       } catch (err) {
@@ -56,6 +68,44 @@ function Event() {
     loadEvent();
   }, [id]);
 
+  async function loadAttendees(query = attendeeQuery) {
+    if (!getToken()) return;
+    setAttendeesLoading(true);
+    setAttendeesError('');
+    try {
+      const path = query.trim()
+        ? `/${id}/attendees?q=${encodeURIComponent(query.trim())}`
+        : `/${id}/attendees`;
+      const response = await apiFetch(path);
+      if (response.status === 401) {
+        navigate('/org');
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        setAttendeesError(data.error || 'Failed to load attendees');
+        setAttendees([]);
+        return;
+      }
+      setAttendees(Array.isArray(data.attendees) ? data.attendees : []);
+    } catch (err) {
+      console.error(err);
+      setAttendeesError('Failed to load attendees');
+    } finally {
+      setAttendeesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAttendees('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const filteredHint = useMemo(() => {
+    if (!attendeeQuery.trim()) return `${attendees.length} attendee(s)`;
+    return `${attendees.length} match(es)`;
+  }, [attendees.length, attendeeQuery]);
+
   async function copyShareLink() {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -64,6 +114,17 @@ function Event() {
       setCopyState('Copy failed — select the link manually.');
     }
     setTimeout(() => setCopyState(''), 2000);
+  }
+
+  function exportCsv() {
+    const csv = attendeesToCsv(attendees);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name || 'attendees'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -104,14 +165,18 @@ function Event() {
                   <p className="mt-1 text-text">{desc}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="rounded-lg bg-background p-4">
-                    <p className="text-sm text-text-muted">Date</p>
-                    <p className="mt-1 font-medium text-text">{date}</p>
+                    <p className="text-sm text-text-muted">Starts</p>
+                    <p className="mt-1 font-medium text-text">
+                      {formatEventWhen(startsAt, timezone)}
+                    </p>
                   </div>
                   <div className="rounded-lg bg-background p-4">
-                    <p className="text-sm text-text-muted">Time</p>
-                    <p className="mt-1 font-medium text-text">{time}</p>
+                    <p className="text-sm text-text-muted">Ends</p>
+                    <p className="mt-1 font-medium text-text">
+                      {formatEventWhen(endsAt, timezone)}
+                    </p>
                   </div>
                   <div className="rounded-lg bg-background p-4">
                     <p className="text-sm text-text-muted">Registered</p>
@@ -124,7 +189,9 @@ function Event() {
                 </div>
 
                 <div className="rounded-lg border border-border bg-background p-4">
-                  <p className="text-sm font-medium text-text">Attendee registration link</p>
+                  <p className="text-sm font-medium text-text">
+                    Attendee registration link
+                  </p>
                   <p className="mt-1 break-all text-sm text-text-muted">{shareUrl}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <Button variant="secondary" className="flex-1" onClick={copyShareLink}>
@@ -133,7 +200,9 @@ function Event() {
                     <Button
                       variant="ghost"
                       className="flex-1"
-                      onClick={() => window.open(`/e/${id}`, '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        window.open(`/e/${id}`, '_blank', 'noopener,noreferrer')
+                      }
                     >
                       Preview attendee page
                     </Button>
@@ -153,6 +222,80 @@ function Event() {
             )}
           </Card.Body>
         </Card>
+
+        {!loading && !error && (
+          <Card>
+            <Card.Header>
+              <h2 className="text-lg font-semibold text-text">Attendees</h2>
+              <p className="text-sm text-text-muted">{filteredHint}</p>
+            </Card.Header>
+            <Card.Body className="flex flex-col gap-4">
+              <form
+                className="flex flex-col gap-2 sm:flex-row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  loadAttendees(attendeeQuery);
+                }}
+              >
+                <div className="flex-1">
+                  <FormField
+                    id="attendee-search"
+                    label="Search"
+                    placeholder="Name or email"
+                    value={attendeeQuery}
+                    onChange={(e) => setAttendeeQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end gap-2">
+                  <Button type="submit" variant="secondary">
+                    Search
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={exportCsv}>
+                    Export CSV
+                  </Button>
+                </div>
+              </form>
+
+              {attendeesError && (
+                <p className="text-sm text-error">{attendeesError}</p>
+              )}
+              {attendeesLoading ? (
+                <p className="text-sm text-text-muted">Loading attendees...</p>
+              ) : attendees.length === 0 ? (
+                <p className="text-sm text-text-muted">No attendees yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-background text-text-muted">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Name</th>
+                        <th className="px-3 py-2 font-medium">Email</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {attendees.map((a) => (
+                        <tr key={a.id}>
+                          <td className="px-3 py-2 text-text">{a.name}</td>
+                          <td className="px-3 py-2 text-text">{a.email}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={
+                                a.checked_in ? 'text-success' : 'text-text-muted'
+                              }
+                            >
+                              {a.checked_in ? 'Checked in' : 'Registered'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        )}
       </div>
     </Layout>
   );

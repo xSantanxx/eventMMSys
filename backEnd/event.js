@@ -14,6 +14,11 @@ const {
   hashPassword,
   verifyPassword,
 } = require('./auth');
+const {
+  createSignedQrToken,
+  verifySignedQrToken,
+  isLegacyOpaqueToken,
+} = require('./qrToken');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,6 +54,9 @@ app.use(express.urlencoded({ extended: true }));
 app.set('views', path.join(__dirname));
 app.set('view engine', 'ejs');
 
+const EVENT_PUBLIC_COLUMNS =
+  'id, name, date, starts_at, ends_at, timezone, description, created_at, registered, checked_in';
+
 function sendValidationErrors(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -64,6 +72,10 @@ async function assertEventOwner(eventId, organizerId) {
     [eventId, organizerId]
   );
   return result.rows[0] || null;
+}
+
+function dateFromIso(iso) {
+  return new Date(iso).toISOString().slice(0, 10);
 }
 
 app.get('/health', async (req, res) => {
@@ -218,9 +230,19 @@ app.post(
       min: 12,
       max: 40,
     }),
-    check('date', 'Date must be valid').isDate(),
     check('description', 'Description length must be greater 10').isLength({
       min: 10,
+    }),
+    check('starts_at', 'Start time must be a valid ISO date').isISO8601(),
+    check('ends_at', 'End time must be a valid ISO date').isISO8601(),
+    check('timezone', 'Timezone is required')
+      .optional({ values: 'falsy' })
+      .isLength({ min: 1, max: 64 }),
+    check('ends_at').custom((endsAt, { req }) => {
+      if (new Date(endsAt) <= new Date(req.body.starts_at)) {
+        throw new Error('End time must be after start time');
+      }
+      return true;
     }),
     check('created_at', 'Date must be valid').isISO8601().toDate(),
   ],
@@ -229,13 +251,22 @@ app.post(
 
     try {
       const token = crypto.randomBytes(16).toString('hex');
-      const query =
-        'INSERT INTO events (id, organizer_id, name, date, description, created_at) VALUES ($1, $2, $3, $4, $5, $6)';
+      const startsAt = new Date(req.body.starts_at).toISOString();
+      const endsAt = new Date(req.body.ends_at).toISOString();
+      const eventDate = dateFromIso(startsAt);
+      const timezone = req.body.timezone || 'UTC';
+
+      const query = `INSERT INTO events
+        (id, organizer_id, name, date, starts_at, ends_at, timezone, description, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
       const values = [
         token,
         req.organizer.id,
         req.body.name,
-        req.body.date,
+        eventDate,
+        startsAt,
+        endsAt,
+        timezone,
         req.body.description,
         req.body.created_at,
       ];
@@ -244,6 +275,12 @@ app.post(
       res.status(201).json({ message: 'Your event has been added', id: token });
     } catch (error) {
       console.error(error);
+      if (error.code === '42703') {
+        return res.status(500).json({
+          error:
+            'Database missing starts_at/ends_at columns. Run backEnd/schema_p1.sql in Supabase.',
+        });
+      }
       res.status(400).json({ error: 'Failed to create event' });
     }
   }
@@ -252,13 +289,49 @@ app.post(
 app.get('/getEvents', requireAuth, async (req, res) => {
   try {
     const server = await db.query(
-      'SELECT id, name, date, description, created_at, registered, checked_in FROM events WHERE organizer_id = $1 ORDER BY created_at DESC',
+      `SELECT ${EVENT_PUBLIC_COLUMNS} FROM events WHERE organizer_id = $1 ORDER BY COALESCE(starts_at, created_at) DESC`,
       [req.organizer.id]
     );
     res.status(200).json(server.rows);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+app.get('/:id/attendees', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const owned = await assertEventOwner(id, req.organizer.id);
+    if (!owned) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    let result;
+    if (q) {
+      const like = `%${q}%`;
+      result = await db.query(
+        `SELECT id, name, email, checked_in
+         FROM attendees
+         WHERE event_id = $1 AND (name ILIKE $2 OR email ILIKE $2)
+         ORDER BY name ASC`,
+        [id, like]
+      );
+    } else {
+      result = await db.query(
+        `SELECT id, name, email, checked_in
+         FROM attendees
+         WHERE event_id = $1
+         ORDER BY name ASC`,
+        [id]
+      );
+    }
+
+    res.status(200).json({ attendees: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to load attendees' });
   }
 });
 
@@ -274,6 +347,17 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
     const owned = await assertEventOwner(id, req.organizer.id);
     if (!owned) {
       return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const signed = verifySignedQrToken(qrToken);
+    if (signed) {
+      if (signed.eventId !== id) {
+        return res.status(404).json({ error: 'Invalid QR code for this event' });
+      }
+    } else if (!isLegacyOpaqueToken(qrToken) && !qrToken.startsWith('v1.')) {
+      return res.status(404).json({ error: 'Invalid QR code for this event' });
+    } else if (qrToken.startsWith('v1.') && !signed) {
+      return res.status(404).json({ error: 'Invalid or tampered QR code' });
     }
 
     const checkedIn = await db.query(
@@ -304,6 +388,11 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
     return res.status(409).json({ error: "You're already checked in" });
   } catch (error) {
     console.error(error);
+    if (error.code === 'QR_SECRET_MISSING') {
+      return res.status(500).json({
+        error: 'Server misconfigured: set JWT_SECRET or QR_HMAC_SECRET',
+      });
+    }
     res.status(500).json({ error: 'Check-in failed' });
   }
 });
@@ -311,7 +400,7 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
 app.get('/:id', async (req, res) => {
   try {
     const server = await db.query(
-      'SELECT id, name, date, description, created_at, registered, checked_in FROM events WHERE id = $1',
+      `SELECT ${EVENT_PUBLIC_COLUMNS} FROM events WHERE id = $1`,
       [req.params.id]
     );
     if (!server.rows.length) {
@@ -346,8 +435,8 @@ app.post(
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      const token = crypto.randomBytes(16).toString('hex');
       const attendeesId = crypto.randomBytes(16).toString('hex');
+      const token = createSignedQrToken({ eventId: id, attendeeId: attendeesId });
       const query =
         'INSERT INTO attendees (id, name, email, event_id, qr_token, checked_in) VALUES ($1, $2, $3, $4, $5, $6)';
       const values = [attendeesId, req.body.name, req.body.email, id, token, false];
@@ -382,6 +471,11 @@ app.post(
         return res.status(409).json({
           error: 'This email is already registered for the event',
           detail: error.detail,
+        });
+      }
+      if (error.code === 'QR_SECRET_MISSING') {
+        return res.status(500).json({
+          error: 'Server misconfigured: set JWT_SECRET or QR_HMAC_SECRET',
         });
       }
       console.error(error);

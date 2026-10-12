@@ -6,8 +6,10 @@ A full-stack event management app for creating events, registering attendees, se
 
 - **Split UX** — `/org` for organizers, `/e/:id` for attendees (shared landing at `/`)
 - **Organizer auth** — register/login with JWT; events are owned by the logged-in organizer
-- **Event hub** — view your events, copy shareable registration links, open check-in
-- **Attendee registration** — public form + QR email; no attendee account
+- **Event scheduling** — organizer picks start/end times (+ timezone) when creating an event
+- **Shareable register links** — `/e/:id/register` (copy from organizer dashboard)
+- **Attendee list** — search + CSV export on the organizer event page
+- **Signed QR codes** — HMAC-bound to event + attendee (`v1.…`); legacy hex tokens still work
 - **QR check-in** — organizer-only scanner under `/org/events/:id/check-in`
 - **Health checks** — backend reports database and email provider status
 
@@ -41,8 +43,10 @@ eventMMSys/
 │   ├── auth.js               # JWT helpers + password hashing
 │   ├── db.js                 # PostgreSQL connection pool
 │   ├── mail.js               # Email delivery (Resend / Gmail)
+│   ├── qrToken.js            # Signed QR HMAC helpers
 │   ├── schema.sql            # Fresh-install schema
 │   ├── schema_supabase.sql   # Safe migration for existing Supabase DBs
+│   ├── schema_p1.sql         # Adds starts_at / ends_at / timezone
 │   └── package.json
 ├── frontEnd/screen/
 │   ├── src/
@@ -59,9 +63,9 @@ eventMMSys/
 
 ## Database Schema
 
-Prefer running `backEnd/schema_supabase.sql` in the Supabase SQL Editor (handles existing tables). Fresh installs can use `backEnd/schema.sql`.
+Prefer running `backEnd/schema_supabase.sql` in the Supabase SQL Editor (handles existing tables). Fresh installs can use `backEnd/schema.sql`. Then run `backEnd/schema_p1.sql` for scheduling columns.
 
-Core tables: `organizers`, `events` (with `organizer_id`), `attendees`.
+Core tables: `organizers`, `events` (`organizer_id`, `starts_at`, `ends_at`, `timezone`), `attendees`.
 
 ## API Endpoints
 
@@ -72,9 +76,10 @@ Core tables: `organizers`, `events` (with `organizer_id`), `attendees`.
 | `POST` | `/auth/login` | No | Log in; returns JWT |
 | `GET` | `/auth/me` | Yes | Current organizer |
 | `GET` | `/getEvents` | Yes | List your events |
-| `POST` | `/addEvent` | Yes | Create a new event |
+| `POST` | `/addEvent` | Yes | Create event (`starts_at`, `ends_at`, `timezone`) |
 | `GET` | `/:id` | No | Get event by ID |
-| `POST` | `/:id/register` | No | Register an attendee and send QR email |
+| `GET` | `/:id/attendees?q=` | Yes | List/search attendees (owner only) |
+| `POST` | `/:id/register` | No | Register attendee + email signed QR |
 | `POST` | `/:id/signin` | Yes | Check in via QR token (owner only) |
 
 ## Local Development
@@ -86,7 +91,7 @@ Core tables: `organizers`, `events` (with `organizer_id`), `attendees`.
 
 ### 1. Database
 
-Run `backEnd/schema_supabase.sql` (or `schema.sql`) in your Postgres / Supabase SQL editor.
+Run `backEnd/schema_supabase.sql` (or `schema.sql`), then `backEnd/schema_p1.sql`, in your Postgres / Supabase SQL editor.
 
 ### 2. Backend
 
@@ -166,7 +171,8 @@ Open `http://localhost:5173`, register an organizer, then create events.
 |----------|-------------|
 | `DATABASE_URL` | Supabase Postgres connection string |
 | `DATABASE_SSL` | `true` |
-| `JWT_SECRET` | Long random string for signing tokens |
+| `JWT_SECRET` | Long random string for login + QR signing |
+| `QR_HMAC_SECRET` | Optional; defaults to `JWT_SECRET` |
 | `RESEND_API_KEY` | Resend API key (required on Render — SMTP is blocked) |
 | `RESEND_FROM` | Sender address, e.g. `Event System <onboarding@resend.dev>` |
 | `FRONTEND_URL` | Your Vercel frontend URL |
@@ -188,16 +194,24 @@ Open `http://localhost:5173`, register an organizer, then create events.
 ### Database (Supabase)
 
 1. Create a Supabase project
-2. Run `backEnd/schema_supabase.sql` in the SQL editor
+2. Run `backEnd/schema_supabase.sql`, then `backEnd/schema_p1.sql`
 3. Copy the connection string into `DATABASE_URL` on Render
+
+### Deploy checklist
+
+- [ ] Supabase: `schema_supabase.sql` + `schema_p1.sql` applied
+- [ ] Render: `DATABASE_URL`, `DATABASE_SSL=true`, `JWT_SECRET`
+- [ ] Render: `RESEND_API_KEY` + `RESEND_FROM` (not Gmail SMTP)
+- [ ] Render: `FRONTEND_URL` = Vercel URL
+- [ ] Vercel: `VITE_API_URL` = Render API URL
+- [ ] Smoke test: organizer create event → copy `/e/.../register` → register → check-in
 
 ## User Flow
 
-1. Organizer registers/logs in and creates an event
-2. Attendees open the event page and register with name + email
-3. Backend saves the attendee, generates a QR token, and emails the QR code
-4. At the event, the organizer opens Sign In and scans the attendee's QR code
-5. Backend marks the attendee as checked in and increments the event counter
+1. Organizer registers/logs in and creates an event with start/end times
+2. Organizer copies the public `/e/:id/register` link and shares it
+3. Attendees open the link, register, and receive a signed QR by email
+4. Organizer opens check-in and scans codes; dashboard shows attendee list / CSV
 
 ## Scripts
 
@@ -205,6 +219,7 @@ Open `http://localhost:5173`, register an organizer, then create events.
 
 ```bash
 npm start    # Start API server
+npm test     # Validation + QR token unit tests
 ```
 
 **Frontend**
@@ -213,6 +228,7 @@ npm start    # Start API server
 npm run dev      # Development server
 npm run build    # Production build
 npm run preview  # Preview production build
+npm test         # Route + datetime helper tests
 ```
 
 ## License

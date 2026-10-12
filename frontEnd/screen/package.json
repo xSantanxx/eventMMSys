@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node src/routes.test.js"
+    "test": "node src/routes.test.js && node src/datetime.test.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",

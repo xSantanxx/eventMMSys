@@ -8,6 +8,25 @@ import {
   getToken,
   setSession,
 } from './api/client';
+import {
+  browserTimezone,
+  datetimeLocalToIso,
+  toDatetimeLocalValue,
+} from './datetime';
+
+function defaultStartLocal() {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return toDatetimeLocalValue(d);
+}
+
+function defaultEndLocal() {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 3);
+  return toDatetimeLocalValue(d);
+}
 
 /** Organizer hub: login/register + owned event list. */
 function App() {
@@ -15,6 +34,8 @@ function App() {
   const location = useLocation();
   const [regName, setRegName] = useState('');
   const [regDes, setRegDes] = useState('');
+  const [regStart, setRegStart] = useState(defaultStartLocal);
+  const [regEnd, setRegEnd] = useState(defaultEndLocal);
   const [errors, setErrors] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [events, setEvents] = useState([]);
@@ -129,17 +150,29 @@ function App() {
     setSubmitting(true);
     setErrors([]);
 
-    const fullDate = new Date().toJSON().slice(0, 10);
-    const fullDateWTime = new Date().toISOString();
+    const startsAt = datetimeLocalToIso(regStart);
+    const endsAt = datetimeLocalToIso(regEnd);
+    if (!startsAt || !endsAt) {
+      setErrors(['Please choose valid start and end times.']);
+      setSubmitting(false);
+      return;
+    }
+    if (new Date(endsAt) <= new Date(startsAt)) {
+      setErrors(['End time must be after start time.']);
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const response = await apiFetch('/addEvent', {
         method: 'POST',
         body: JSON.stringify({
           name: regName,
-          date: fullDate,
           description: regDes,
-          created_at: fullDateWTime,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          timezone: browserTimezone(),
+          created_at: new Date().toISOString(),
         }),
       });
       const data = await response.json();
@@ -158,6 +191,8 @@ function App() {
       } else {
         setRegName('');
         setRegDes('');
+        setRegStart(defaultStartLocal());
+        setRegEnd(defaultEndLocal());
         setFormOpen(false);
         await loadEvents();
         if (data.id) {
@@ -309,6 +344,23 @@ function App() {
               value={regDes}
               onChange={(e) => setRegDes(e.target.value)}
             />
+            <FormField
+              id="event-start"
+              label="Starts"
+              type="datetime-local"
+              value={regStart}
+              onChange={(e) => setRegStart(e.target.value)}
+            />
+            <FormField
+              id="event-end"
+              label="Ends"
+              type="datetime-local"
+              value={regEnd}
+              onChange={(e) => setRegEnd(e.target.value)}
+            />
+            <p className="text-xs text-text-muted">
+              Times use your local timezone ({browserTimezone()}).
+            </p>
 
             {errors.length > 0 && (
               <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">

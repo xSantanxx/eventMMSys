@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Layout, Card, Button } from './components';
 import { apiUrl } from './api/client';
+import { formatEventWhen } from './datetime';
 
 /** Public attendee-facing event page (no check-in controls). */
 function AttendeeEvent() {
@@ -9,7 +10,9 @@ function AttendeeEvent() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [date, setDate] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [timezone, setTimezone] = useState('UTC');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,7 +32,9 @@ function AttendeeEvent() {
         const event = data[0];
         setName(event.name);
         setDesc(event.description);
-        setDate(new Date(event.date).toLocaleDateString('en-US'));
+        setStartsAt(event.starts_at || event.date);
+        setEndsAt(event.ends_at || '');
+        setTimezone(event.timezone || 'UTC');
       } catch (err) {
         console.error(err);
         setError('Failed to load event details.');
@@ -75,9 +80,19 @@ function AttendeeEvent() {
                   <p className="mt-1 text-text">{desc}</p>
                 </div>
 
-                <div className="rounded-lg bg-background p-4">
-                  <p className="text-sm text-text-muted">Date</p>
-                  <p className="mt-1 font-medium text-text">{date}</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg bg-background p-4">
+                    <p className="text-sm text-text-muted">Starts</p>
+                    <p className="mt-1 font-medium text-text">
+                      {formatEventWhen(startsAt, timezone)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-background p-4">
+                    <p className="text-sm text-text-muted">Ends</p>
+                    <p className="mt-1 font-medium text-text">
+                      {formatEventWhen(endsAt, timezone)}
+                    </p>
+                  </div>
                 </div>
 
                 <p className="text-sm text-text-muted">
