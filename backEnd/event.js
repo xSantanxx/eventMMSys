@@ -19,6 +19,10 @@ const {
   verifySignedQrToken,
   isLegacyOpaqueToken,
 } = require('./qrToken');
+const {
+  buildRegisterSuccessBody,
+  buildResendBody,
+} = require('./registrationQr');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -612,6 +616,55 @@ app.get('/:id', async (req, res) => {
 });
 
 app.post(
+  '/:id/register/resend',
+  [check('email', 'Valid email required').isEmail().normalizeEmail()],
+  async (req, res) => {
+    if (sendValidationErrors(req, res)) return;
+
+    try {
+      const id = req.params.id;
+      const eventResult = await db.query(
+        'SELECT id, name FROM events WHERE id = $1',
+        [id]
+      );
+      if (!eventResult.rows.length) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const attendeeResult = await db.query(
+        'SELECT id, email, qr_token FROM attendees WHERE event_id = $1 AND email = $2',
+        [id, req.body.email]
+      );
+      if (!attendeeResult.rows.length) {
+        return res.status(404).json({
+          error: 'No registration found for this email',
+        });
+      }
+
+      const attendee = attendeeResult.rows[0];
+      const qrBuffer = await qrcode.toBuffer(attendee.qr_token);
+
+      let emailSent = false;
+      try {
+        await sendRegistrationEmail({
+          to: attendee.email,
+          eventName: eventResult.rows[0].name,
+          qrBuffer,
+        });
+        emailSent = true;
+      } catch (emailError) {
+        console.error('Failed to resend registration email:', emailError.message);
+      }
+
+      res.status(emailSent ? 200 : 502).json(buildResendBody({ emailSent }));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to resend confirmation email' });
+    }
+  }
+);
+
+app.post(
   '/:id/register',
   [
     check('name', 'Name must be at least 1 character')
@@ -667,12 +720,9 @@ app.post(
       }
 
       await db.query('UPDATE events SET registered = registered + 1 WHERE id = $1', [id]);
-      res.status(201).json({
-        success: emailSent
-          ? 'Created'
-          : 'Registered, but the confirmation email could not be sent. Contact the event organizer.',
-        emailSent,
-      });
+      res.status(201).json(
+        buildRegisterSuccessBody({ emailSent, qrBuffer: dataToSend })
+      );
     } catch (error) {
       if (error.code === '23505') {
         return res.status(409).json({

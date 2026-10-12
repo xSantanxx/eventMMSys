@@ -8,6 +8,7 @@ A full-stack event management app for creating events, registering attendees, se
 - **Organizer auth** — register/login with JWT; events are owned by the logged-in organizer
 - **Event scheduling** — organizer picks start/end times (+ timezone) when creating an event
 - **Shareable register links** — `/e/:id/register` (copy from organizer dashboard)
+- **QR success screen** — show/download check-in QR after register; resend confirmation email
 - **Attendee list** — search + CSV export on the organizer event page
 - **Signed QR codes** — HMAC-bound to event + attendee (`v1.…`); legacy hex tokens still work
 - **Kiosk check-in** — fullscreen scanner, success/fail sounds, cooldown, live counts
@@ -86,7 +87,8 @@ Core tables: `organizers`, `events` (schedule + `capacity`/`status`), `attendees
 | `GET` | `/:id/check-in-log` | Yes | Recent check-in / undo audit log |
 | `POST` | `/:id/attendees/:attendeeId/undo-checkin` | Yes | Undo a check-in |
 | `PATCH` | `/:id` | Yes | Update capacity / status |
-| `POST` | `/:id/register` | No | Register attendee + email signed QR |
+| `POST` | `/:id/register` | No | Register attendee; returns QR data URL + emails signed QR |
+| `POST` | `/:id/register/resend` | No | Resend confirmation email for an existing registration |
 | `POST` | `/:id/signin` | Yes | Check in via QR token (owner only) |
 
 ## Local Development

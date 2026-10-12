@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node event.js",
     "dev": "node event.js",
-    "test": "node test/nameValidation.test.js && node test/qrToken.test.js && node test/eventSchedule.test.js && node test/p2Rules.test.js"
+    "test": "node test/nameValidation.test.js && node test/qrToken.test.js && node test/eventSchedule.test.js && node test/p2Rules.test.js && node test/registrationQr.test.js"
   },
   "engines": {
     "node": ">=18"
