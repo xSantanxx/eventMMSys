@@ -4,13 +4,23 @@ A full-stack event management app for creating events, registering attendees, se
 
 ## Features
 
+- **Split UX** — `/org` for organizers, `/e/:id` for attendees (shared landing at `/`)
 - **Organizer auth** — register/login with JWT; events are owned by the logged-in organizer
-- **Event hub** — view your events and create new ones from a single dashboard
-- **Event details** — see description, date, registration count, and check-in count
-- **Attendee registration** — validated signup form with email confirmation (public)
-- **QR code emails** — unique QR code generated per attendee and sent on registration
-- **QR check-in** — staff (authenticated) scan codes to mark attendees as checked in
+- **Event hub** — view your events, copy shareable registration links, open check-in
+- **Attendee registration** — public form + QR email; no attendee account
+- **QR check-in** — organizer-only scanner under `/org/events/:id/check-in`
 - **Health checks** — backend reports database and email provider status
+
+### Frontend routes
+
+| Path | Audience | Page |
+|------|----------|------|
+| `/` | Both | Choose organizer or attendee |
+| `/org` | Organizer | Login / dashboard |
+| `/org/events/:id` | Organizer | Event stats + share link + scanner entry |
+| `/org/events/:id/check-in` | Organizer | QR scanner (auth required) |
+| `/e/:id` | Attendee | Public event info |
+| `/e/:id/register` | Attendee | Public registration |
 
 ## Tech Stack
 

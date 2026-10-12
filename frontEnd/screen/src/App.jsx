@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Card, Button, Modal, FormField } from './components';
 import {
   apiFetch,
@@ -9,7 +9,10 @@ import {
   setSession,
 } from './api/client';
 
+/** Organizer hub: login/register + owned event list. */
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [regName, setRegName] = useState('');
   const [regDes, setRegDes] = useState('');
   const [errors, setErrors] = useState([]);
@@ -63,6 +66,10 @@ function App() {
         const data = await response.json();
         setOrganizer(data.organizer);
         await loadEvents();
+        const from = location.state?.from;
+        if (typeof from === 'string' && from.startsWith('/org/')) {
+          navigate(from, { replace: true });
+        }
       } catch {
         clearSession();
         setOrganizer(null);
@@ -71,6 +78,8 @@ function App() {
     bootstrap();
     const timer = setTimeout(() => setHubReady(true), 100);
     return () => clearTimeout(timer);
+    // Intentionally run once on mount to restore session / deep-link return.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function submitAuth(e) {
@@ -104,6 +113,9 @@ function App() {
       setOrganizer(data.organizer);
       setAuthPassword('');
       await loadEvents();
+      if (location.state?.from?.startsWith('/org/')) {
+        navigate(location.state.from, { replace: true });
+      }
     } catch (err) {
       console.error(err);
       setAuthError('Authentication failed');
@@ -148,6 +160,9 @@ function App() {
         setRegDes('');
         setFormOpen(false);
         await loadEvents();
+        if (data.id) {
+          navigate(`/org/events/${data.id}`);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -167,73 +182,83 @@ function App() {
   if (!organizer) {
     return (
       <Layout>
-        <Card animate className="w-full max-w-md">
-          <Card.Header>
-            <h1 className="text-xl font-semibold text-text">
-              {authMode === 'login' ? 'Organizer login' : 'Create organizer account'}
-            </h1>
-            <p className="text-sm text-text-muted">
-              Sign in to create events and run QR check-in.
-            </p>
-          </Card.Header>
-          <Card.Body>
-            <form onSubmit={submitAuth} className="flex flex-col gap-4">
-              {authMode === 'register' && (
+        <div className="flex w-full max-w-md flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={() => navigate('/')}>
+              ← Home
+            </Button>
+            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+              Organizer
+            </span>
+          </div>
+          <Card animate className="w-full">
+            <Card.Header>
+              <h1 className="text-xl font-semibold text-text">
+                {authMode === 'login' ? 'Organizer login' : 'Create organizer account'}
+              </h1>
+              <p className="text-sm text-text-muted">
+                Sign in to create events and run QR check-in.
+              </p>
+            </Card.Header>
+            <Card.Body>
+              <form onSubmit={submitAuth} className="flex flex-col gap-4">
+                {authMode === 'register' && (
+                  <FormField
+                    id="auth-name"
+                    label="Name"
+                    value={authName}
+                    onChange={(e) => setAuthName(e.target.value)}
+                  />
+                )}
                 <FormField
-                  id="auth-name"
-                  label="Name"
-                  value={authName}
-                  onChange={(e) => setAuthName(e.target.value)}
+                  id="auth-email"
+                  label="Email"
+                  type="email"
+                  autoComplete="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
                 />
-              )}
-              <FormField
-                id="auth-email"
-                label="Email"
-                type="email"
-                autoComplete="email"
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-              />
-              <FormField
-                id="auth-password"
-                label="Password"
-                type="password"
-                autoComplete={
-                  authMode === 'login' ? 'current-password' : 'new-password'
-                }
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-              />
+                <FormField
+                  id="auth-password"
+                  label="Password"
+                  type="password"
+                  autoComplete={
+                    authMode === 'login' ? 'current-password' : 'new-password'
+                  }
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                />
 
-              {authError && (
-                <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
-                  <p className="text-sm text-error">{authError}</p>
-                </div>
-              )}
+                {authError && (
+                  <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
+                    <p className="text-sm text-error">{authError}</p>
+                  </div>
+                )}
 
-              <Button type="submit" className="w-full" disabled={authBusy}>
-                {authBusy
-                  ? 'Please wait...'
-                  : authMode === 'login'
-                    ? 'Log in'
-                    : 'Create account'}
-              </Button>
-            </form>
+                <Button type="submit" className="w-full" disabled={authBusy}>
+                  {authBusy
+                    ? 'Please wait...'
+                    : authMode === 'login'
+                      ? 'Log in'
+                      : 'Create account'}
+                </Button>
+              </form>
 
-            <button
-              type="button"
-              className="mt-4 text-sm text-text-muted hover:text-text"
-              onClick={() => {
-                setAuthMode((mode) => (mode === 'login' ? 'register' : 'login'));
-                setAuthError('');
-              }}
-            >
-              {authMode === 'login'
-                ? 'Need an account? Register'
-                : 'Already have an account? Log in'}
-            </button>
-          </Card.Body>
-        </Card>
+              <button
+                type="button"
+                className="mt-4 text-sm text-text-muted hover:text-text"
+                onClick={() => {
+                  setAuthMode((mode) => (mode === 'login' ? 'register' : 'login'));
+                  setAuthError('');
+                }}
+              >
+                {authMode === 'login'
+                  ? 'Need an account? Register'
+                  : 'Already have an account? Log in'}
+              </button>
+            </Card.Body>
+          </Card>
+        </div>
       </Layout>
     );
   }
@@ -242,7 +267,15 @@ function App() {
     <Layout>
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex w-full max-w-xl items-center justify-between gap-3">
-          <p className="truncate text-sm text-text-muted">{organizer.name}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <Button variant="ghost" onClick={() => navigate('/')}>
+              ← Home
+            </Button>
+            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+              Organizer
+            </span>
+            <p className="truncate text-sm text-text-muted">{organizer.name}</p>
+          </div>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={logout}>
               Log out
@@ -295,9 +328,10 @@ function App() {
 
         <Card animate={hubReady} className="max-h-[28rem] overflow-y-auto">
           <Card.Header>
-            <h1 className="text-xl font-semibold text-text">Events</h1>
+            <h1 className="text-xl font-semibold text-text">Your events</h1>
             <p className="text-sm text-text-muted">
-              {events.length} event{events.length !== 1 ? 's' : ''} available
+              {events.length} event{events.length !== 1 ? 's' : ''} · share the
+              attendee link from each event page
             </p>
           </Card.Header>
           <Card.Body className="p-0">
@@ -310,7 +344,7 @@ function App() {
                 {events.map((event, i) => (
                   <li key={event.id}>
                     <Link
-                      to={`/${event.id}`}
+                      to={`/org/events/${event.id}`}
                       className="flex items-center gap-3 px-6 py-4 text-text transition-colors hover:bg-background"
                     >
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-primary">

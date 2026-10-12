@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, Card, Button, FormField } from './components';
 import { apiUrl } from './api/client';
 
+/** Public attendee registration (no login). */
 function RegistrationSys() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ function RegistrationSys() {
       } else if (data.detail) {
         setErrors([data.detail]);
       } else {
-        setErrors(['Registration failed. Please try again.']);
+        setErrors([data.error || 'Registration failed. Please try again.']);
       }
     } catch (err) {
       console.error(err);
@@ -69,9 +70,18 @@ function RegistrationSys() {
   return (
     <Layout>
       <div className="flex w-full flex-col gap-4">
-        <Button variant="ghost" onClick={() => navigate(`/${id}`)} className="self-start">
-          ← Back to event
-        </Button>
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => navigate(`/e/${id}`)}
+            className="self-start"
+          >
+            ← Back to event
+          </Button>
+          <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+            Attendee
+          </span>
+        </div>
 
         <Card>
           <Card.Header>
@@ -83,7 +93,8 @@ function RegistrationSys() {
 
           <Card.Body>
             <p className="mb-5 text-sm text-text-muted">
-              Fill out the form below. You&apos;ll receive a QR code by email to check in at the event.
+              Fill out the form below. You&apos;ll receive a QR code by email to
+              check in at the event.
             </p>
 
             <form onSubmit={submitForm} className="flex flex-col gap-4">

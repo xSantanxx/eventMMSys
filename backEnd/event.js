@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { check, validationResult } = require('express-validator');
 const express = require('express');
 const cors = require('cors');
@@ -9,6 +10,7 @@ const { sendRegistrationEmail, verifyEmailConfig } = require('./mail');
 const {
   signToken,
   requireAuth,
+  requireJwtSecret,
   hashPassword,
   verifyPassword,
 } = require('./auth');
@@ -87,10 +89,9 @@ app.get('/health', async (req, res) => {
 app.post(
   '/auth/register',
   [
-    check('name', 'Name length should be 2 to 60 characters').isLength({
-      min: 2,
-      max: 60,
-    }),
+    check('name', 'Name must be at least 1 character')
+      .trim()
+      .isLength({ min: 1 }),
     check('email', 'Valid email required').isEmail().normalizeEmail(),
     check('password', 'Password must be at least 8 characters').isLength({
       min: 8,
@@ -99,6 +100,19 @@ app.post(
   ],
   async (req, res) => {
     if (sendValidationErrors(req, res)) return;
+
+    try {
+      requireJwtSecret();
+    } catch (error) {
+      if (error.code === 'JWT_SECRET_MISSING') {
+        console.error(error.message);
+        return res.status(500).json({
+          error:
+            'Server misconfigured: set JWT_SECRET in backEnd/.env (or host env vars) and restart.',
+        });
+      }
+      throw error;
+    }
 
     try {
       const id = crypto.randomBytes(16).toString('hex');
@@ -117,8 +131,24 @@ app.post(
       if (error.code === '23505') {
         return res.status(409).json({ error: 'Email already registered' });
       }
-      console.error(error);
-      res.status(500).json({ error: 'Unable to create account' });
+      if (error.code === '42P01') {
+        console.error(error);
+        return res.status(500).json({
+          error:
+            'Database missing organizers table. Run backEnd/schema_supabase.sql in Supabase SQL Editor.',
+        });
+      }
+      if (error.code === 'JWT_SECRET_MISSING') {
+        return res.status(500).json({
+          error:
+            'Server misconfigured: set JWT_SECRET in backEnd/.env (or host env vars) and restart.',
+        });
+      }
+      console.error('Register failed:', error.code || error.name, error.message);
+      res.status(500).json({
+        error: 'Unable to create account',
+        detail: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      });
     }
   }
 );
@@ -297,10 +327,9 @@ app.get('/:id', async (req, res) => {
 app.post(
   '/:id/register',
   [
-    check('name', 'Name length should be 10 to 30 characters').isLength({
-      min: 10,
-      max: 30,
-    }),
+    check('name', 'Name must be at least 1 character')
+      .trim()
+      .isLength({ min: 1 }),
     check('email', 'Valid email required').isEmail().normalizeEmail(),
   ],
   async (req, res) => {

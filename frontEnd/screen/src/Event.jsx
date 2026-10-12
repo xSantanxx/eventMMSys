@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, Card, Button } from './components';
-import { apiUrl } from './api/client';
+import { apiUrl, getPublicRegisterUrl, getToken } from './api/client';
 
+/** Organizer event dashboard: stats, share link, check-in. */
 function Event() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -14,6 +15,15 @@ function Event() {
   const [checkedIn, setCheckedIn] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copyState, setCopyState] = useState('');
+
+  const shareUrl = getPublicRegisterUrl(id);
+
+  useEffect(() => {
+    if (!getToken()) {
+      navigate('/org', { replace: true, state: { from: `/org/events/${id}` } });
+    }
+  }, [id, navigate]);
 
   useEffect(() => {
     async function loadEvent() {
@@ -46,18 +56,39 @@ function Event() {
     loadEvent();
   }, [id]);
 
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyState('Copied!');
+    } catch {
+      setCopyState('Copy failed — select the link manually.');
+    }
+    setTimeout(() => setCopyState(''), 2000);
+  }
+
   return (
     <Layout>
       <div className="flex w-full flex-col gap-4">
-        <Button variant="ghost" onClick={() => navigate('/')} className="self-start">
-          ← Back to events
-        </Button>
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/org')}
+            className="self-start"
+          >
+            ← Back to your events
+          </Button>
+          <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+            Organizer
+          </span>
+        </div>
 
         <Card>
           <Card.Header>
-            <h1 className="text-xl font-semibold text-text">{loading ? 'Loading...' : name}</h1>
+            <h1 className="text-xl font-semibold text-text">
+              {loading ? 'Loading...' : name}
+            </h1>
             {!loading && !error && (
-              <p className="text-sm text-text-muted">Event details</p>
+              <p className="text-sm text-text-muted">Organizer event dashboard</p>
             )}
           </Card.Header>
 
@@ -92,18 +123,32 @@ function Event() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button className="flex-1" onClick={() => navigate(`/${id}/register`)}>
-                    Register
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => navigate(`/${id}/signin`)}
-                  >
-                    Sign In
-                  </Button>
+                <div className="rounded-lg border border-border bg-background p-4">
+                  <p className="text-sm font-medium text-text">Attendee registration link</p>
+                  <p className="mt-1 break-all text-sm text-text-muted">{shareUrl}</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Button variant="secondary" className="flex-1" onClick={copyShareLink}>
+                      Copy link
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => window.open(`/e/${id}`, '_blank', 'noopener,noreferrer')}
+                    >
+                      Preview attendee page
+                    </Button>
+                  </div>
+                  {copyState && (
+                    <p className="mt-2 text-sm text-success">{copyState}</p>
+                  )}
                 </div>
+
+                <Button
+                  className="w-full"
+                  onClick={() => navigate(`/org/events/${id}/check-in`)}
+                >
+                  Open check-in scanner
+                </Button>
               </div>
             )}
           </Card.Body>

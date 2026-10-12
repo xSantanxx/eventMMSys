@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { Layout, Card, Button } from './components';
 import { apiFetch, getToken } from './api/client';
 
+/** Organizer-only QR check-in scanner. */
 function Sign() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -11,12 +12,21 @@ function Sign() {
   const [statusType, setStatusType] = useState('');
   const scanningRef = useRef(false);
 
+  useEffect(() => {
+    if (!getToken()) {
+      navigate('/org', {
+        replace: true,
+        state: { from: `/org/events/${id}/check-in` },
+      });
+    }
+  }, [id, navigate]);
+
   async function checkIn(result) {
     if (!result?.[0]?.rawValue || scanningRef.current) return;
     if (!getToken()) {
       setStatusType('error');
       setStatus('Please log in again to check attendees in.');
-      navigate('/');
+      navigate('/org');
       return;
     }
 
@@ -31,7 +41,7 @@ function Sign() {
       if (response.status === 401) {
         setStatusType('error');
         setStatus('Please log in again to check attendees in.');
-        navigate('/');
+        navigate('/org');
         return;
       }
 
@@ -56,19 +66,29 @@ function Sign() {
   return (
     <Layout>
       <div className="flex w-full flex-col gap-4">
-        <Button variant="ghost" onClick={() => navigate(`/${id}`)} className="self-start">
-          ← Back to event
-        </Button>
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => navigate(`/org/events/${id}`)}
+            className="self-start"
+          >
+            ← Back to event
+          </Button>
+          <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+            Organizer
+          </span>
+        </div>
 
         <Card>
           <Card.Header>
-            <h1 className="text-xl font-semibold text-text">Sign In</h1>
-            <p className="text-sm text-text-muted">Scan your QR code to check in</p>
+            <h1 className="text-xl font-semibold text-text">Check-in scanner</h1>
+            <p className="text-sm text-text-muted">Scan attendee QR codes</p>
           </Card.Header>
 
           <Card.Body>
             <p className="mb-4 text-sm text-text-muted">
-              Point your camera at the QR code from your confirmation email.
+              Point your camera at the QR code from the attendee&apos;s
+              confirmation email.
             </p>
 
             <div className="overflow-hidden rounded-xl border border-border">

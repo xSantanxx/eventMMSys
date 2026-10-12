@@ -47,3 +47,10 @@ export async function apiFetch(path, options = {}) {
     },
   });
 }
+
+/** Public attendee registration URL for sharing. */
+export function getPublicRegisterUrl(eventId) {
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/e/${eventId}/register`;
+}

@@ -1,21 +1,26 @@
+require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const TOKEN_TTL = process.env.JWT_TTL || '7d';
-
 function requireJwtSecret() {
-    if (!JWT_SECRET) {
-        throw new Error('JWT_SECRET is not set in environment');
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        const err = new Error('JWT_SECRET is not set in environment');
+        err.code = 'JWT_SECRET_MISSING';
+        throw err;
     }
-    return JWT_SECRET;
+    return secret;
+}
+
+function tokenTtl() {
+    return process.env.JWT_TTL || '7d';
 }
 
 function signToken(organizer) {
     return jwt.sign(
         { id: organizer.id, email: organizer.email, name: organizer.name },
         requireJwtSecret(),
-        { expiresIn: TOKEN_TTL }
+        { expiresIn: tokenTtl() }
     );
 }
 
@@ -49,6 +54,7 @@ async function verifyPassword(password, passwordHash) {
 module.exports = {
     signToken,
     requireAuth,
+    requireJwtSecret,
     hashPassword,
     verifyPassword,
 };
