@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "event.js",
   "scripts": {
     "start": "node event.js",
     "dev": "node event.js",
@@ -16,12 +16,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "concurrently": "^9.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
     "qr-image": "^3.2.0",

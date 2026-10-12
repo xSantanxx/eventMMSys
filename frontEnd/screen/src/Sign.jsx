@@ -1,37 +1,55 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { Layout, Card, Button } from './components';
-import { apiUrl } from './api/client';
+import { apiFetch, getToken } from './api/client';
 
 function Sign() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const [statusType, setStatusType] = useState('');
+  const scanningRef = useRef(false);
 
   async function checkIn(result) {
-    if (!result?.[0]?.rawValue) return;
+    if (!result?.[0]?.rawValue || scanningRef.current) return;
+    if (!getToken()) {
+      setStatusType('error');
+      setStatus('Please log in again to check attendees in.');
+      navigate('/');
+      return;
+    }
 
+    scanningRef.current = true;
     try {
-      const response = await fetch(apiUrl(`/${id}/signin`), {
+      const response = await apiFetch(`/${id}/signin`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: result[0].rawValue }),
       });
-      const data = await response.text();
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        setStatusType('error');
+        setStatus('Please log in again to check attendees in.');
+        navigate('/');
+        return;
+      }
 
       if (response.ok) {
         setStatusType('success');
-        setStatus(data);
+        setStatus(data.message || "You're checked in");
       } else {
         setStatusType('error');
-        setStatus(data || 'Check-in failed. Please try again.');
+        setStatus(data.error || 'Check-in failed. Please try again.');
       }
     } catch (err) {
       console.error(err);
       setStatusType('error');
       setStatus('Something went wrong. Please try again.');
+    } finally {
+      setTimeout(() => {
+        scanningRef.current = false;
+      }, 1500);
     }
   }
 

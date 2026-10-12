@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout, Card, Button, Modal, FormField } from './components';
-import { apiUrl } from './api/client';
+import {
+  apiFetch,
+  clearSession,
+  getStoredOrganizer,
+  getToken,
+  setSession,
+} from './api/client';
 
 function App() {
   const [regName, setRegName] = useState('');
@@ -11,10 +17,28 @@ function App() {
   const [events, setEvents] = useState([]);
   const [hubReady, setHubReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [organizer, setOrganizer] = useState(() => getStoredOrganizer());
+  const [authMode, setAuthMode] = useState('login');
+  const [authName, setAuthName] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   async function loadEvents() {
+    if (!getToken()) {
+      setEvents([]);
+      return;
+    }
+
     try {
-      const response = await fetch(apiUrl('/getEvents'));
+      const response = await apiFetch('/getEvents');
+      if (response.status === 401) {
+        clearSession();
+        setOrganizer(null);
+        setEvents([]);
+        return;
+      }
       const data = await response.json();
       if (!Array.isArray(data)) {
         console.error('Failed to load events:', data);
@@ -27,10 +51,66 @@ function App() {
   }
 
   useEffect(() => {
-    loadEvents();
+    async function bootstrap() {
+      if (!getToken()) return;
+      try {
+        const response = await apiFetch('/auth/me');
+        if (!response.ok) {
+          clearSession();
+          setOrganizer(null);
+          return;
+        }
+        const data = await response.json();
+        setOrganizer(data.organizer);
+        await loadEvents();
+      } catch {
+        clearSession();
+        setOrganizer(null);
+      }
+    }
+    bootstrap();
     const timer = setTimeout(() => setHubReady(true), 100);
     return () => clearTimeout(timer);
   }, []);
+
+  async function submitAuth(e) {
+    e.preventDefault();
+    setAuthBusy(true);
+    setAuthError('');
+
+    try {
+      const path = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const body =
+        authMode === 'login'
+          ? { email: authEmail, password: authPassword }
+          : { name: authName, email: authEmail, password: authPassword };
+
+      const response = await apiFetch(path, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+
+      if (data.errors) {
+        setAuthError(data.errors.map((err) => err.msg).join(' '));
+        return;
+      }
+      if (!response.ok) {
+        setAuthError(data.error || 'Authentication failed');
+        return;
+      }
+
+      setSession(data.token, data.organizer);
+      setOrganizer(data.organizer);
+      setAuthPassword('');
+      await loadEvents();
+    } catch (err) {
+      console.error(err);
+      setAuthError('Authentication failed');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
 
   async function addEvent(e) {
     e.preventDefault();
@@ -38,12 +118,11 @@ function App() {
     setErrors([]);
 
     const fullDate = new Date().toJSON().slice(0, 10);
-    const fullDateWTime = new Date().toJSON().slice(0, 19).replace(/T/g, ' ');
+    const fullDateWTime = new Date().toISOString();
 
     try {
-      const response = await fetch(apiUrl('/addEvent'), {
+      const response = await apiFetch('/addEvent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: regName,
           date: fullDate,
@@ -53,8 +132,17 @@ function App() {
       });
       const data = await response.json();
 
+      if (response.status === 401) {
+        clearSession();
+        setOrganizer(null);
+        setErrors(['Session expired. Please log in again.']);
+        return;
+      }
+
       if ('errors' in data) {
         setErrors(data.errors.map((err) => err.msg));
+      } else if (!response.ok) {
+        setErrors([data.error || 'Failed to create event']);
       } else {
         setRegName('');
         setRegDes('');
@@ -69,12 +157,101 @@ function App() {
     }
   }
 
+  function logout() {
+    clearSession();
+    setOrganizer(null);
+    setEvents([]);
+    setFormOpen(false);
+  }
+
+  if (!organizer) {
+    return (
+      <Layout>
+        <Card animate className="w-full max-w-md">
+          <Card.Header>
+            <h1 className="text-xl font-semibold text-text">
+              {authMode === 'login' ? 'Organizer login' : 'Create organizer account'}
+            </h1>
+            <p className="text-sm text-text-muted">
+              Sign in to create events and run QR check-in.
+            </p>
+          </Card.Header>
+          <Card.Body>
+            <form onSubmit={submitAuth} className="flex flex-col gap-4">
+              {authMode === 'register' && (
+                <FormField
+                  id="auth-name"
+                  label="Name"
+                  value={authName}
+                  onChange={(e) => setAuthName(e.target.value)}
+                />
+              )}
+              <FormField
+                id="auth-email"
+                label="Email"
+                type="email"
+                autoComplete="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+              />
+              <FormField
+                id="auth-password"
+                label="Password"
+                type="password"
+                autoComplete={
+                  authMode === 'login' ? 'current-password' : 'new-password'
+                }
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+              />
+
+              {authError && (
+                <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
+                  <p className="text-sm text-error">{authError}</p>
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" disabled={authBusy}>
+                {authBusy
+                  ? 'Please wait...'
+                  : authMode === 'login'
+                    ? 'Log in'
+                    : 'Create account'}
+              </Button>
+            </form>
+
+            <button
+              type="button"
+              className="mt-4 text-sm text-text-muted hover:text-text"
+              onClick={() => {
+                setAuthMode((mode) => (mode === 'login' ? 'register' : 'login'));
+                setAuthError('');
+              }}
+            >
+              {authMode === 'login'
+                ? 'Need an account? Register'
+                : 'Already have an account? Log in'}
+            </button>
+          </Card.Body>
+        </Card>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="flex w-full flex-col items-center gap-6">
-        <Button onClick={() => setFormOpen(true)} size="lg">
-          Create Event
-        </Button>
+        <div className="flex w-full max-w-xl items-center justify-between gap-3">
+          <p className="truncate text-sm text-text-muted">{organizer.name}</p>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={logout}>
+              Log out
+            </Button>
+            <Button onClick={() => setFormOpen(true)} size="lg">
+              Create Event
+            </Button>
+          </div>
+        </div>
 
         <Modal
           open={formOpen}
