@@ -191,6 +191,7 @@ Open `http://localhost:5173`, register an organizer, then create events.
 - **Root directory:** `frontEnd/screen`
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
+- **SPA routing:** `vercel.json` rewrites all paths to `index.html` (needed for `/e/:id`, `/org/events/:id`, etc.)
 
 **Environment variable:**
 
