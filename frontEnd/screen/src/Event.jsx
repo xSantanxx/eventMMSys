@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Layout, Card, Button, FormField } from './components';
+import { Layout, Card, Button, FormField, SelectField } from './components';
 import {
   apiFetch,
   apiUrl,
@@ -9,7 +9,9 @@ import {
 } from './api/client';
 import { attendeesToCsv, formatEventWhen } from './datetime';
 
-/** Organizer event dashboard: schedule, share link, attendees, check-in. */
+const POLL_MS = 4000;
+
+/** Organizer event dashboard: schedule, capacity, live counts, attendees, audit. */
 function Event() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -20,13 +22,19 @@ function Event() {
   const [timezone, setTimezone] = useState('UTC');
   const [registered, setRegistered] = useState(0);
   const [checkedIn, setCheckedIn] = useState(0);
+  const [capacity, setCapacity] = useState('');
+  const [status, setStatus] = useState('live');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copyState, setCopyState] = useState('');
+  const [settingsMsg, setSettingsMsg] = useState('');
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [attendees, setAttendees] = useState([]);
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [attendeesError, setAttendeesError] = useState('');
+  const [logs, setLogs] = useState([]);
+  const [undoBusyId, setUndoBusyId] = useState('');
 
   const shareUrl = getPublicRegisterUrl(id);
 
@@ -36,37 +44,40 @@ function Event() {
     }
   }, [id, navigate]);
 
-  useEffect(() => {
-    async function loadEvent() {
+  function applyEvent(event) {
+    setName(event.name);
+    setDesc(event.description);
+    setStartsAt(event.starts_at || event.date);
+    setEndsAt(event.ends_at || '');
+    setTimezone(event.timezone || 'UTC');
+    setRegistered(event.registered);
+    setCheckedIn(event.checked_in);
+    setCapacity(event.capacity == null ? '' : String(event.capacity));
+    setStatus(event.status || 'live');
+  }
+
+  async function loadEvent({ quiet = false } = {}) {
+    if (!quiet) {
       setLoading(true);
       setError('');
-      try {
-        const response = await fetch(apiUrl(`/${id}`));
-        const data = await response.json();
-
-        if (!Array.isArray(data) || data.length === 0) {
-          setError('This event could not be found.');
-          return;
-        }
-
-        const event = data[0];
-        setName(event.name);
-        setDesc(event.description);
-        setStartsAt(event.starts_at || event.date);
-        setEndsAt(event.ends_at || '');
-        setTimezone(event.timezone || 'UTC');
-        setRegistered(event.registered);
-        setCheckedIn(event.checked_in);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load event details.');
-      } finally {
-        setLoading(false);
-      }
     }
+    try {
+      const response = await fetch(apiUrl(`/${id}`));
+      const data = await response.json();
 
-    loadEvent();
-  }, [id]);
+      if (!Array.isArray(data) || data.length === 0) {
+        if (!quiet) setError('This event could not be found.');
+        return;
+      }
+
+      applyEvent(data[0]);
+    } catch (err) {
+      console.error(err);
+      if (!quiet) setError('Failed to load event details.');
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }
 
   async function loadAttendees(query = attendeeQuery) {
     if (!getToken()) return;
@@ -96,10 +107,35 @@ function Event() {
     }
   }
 
+  async function loadLogs() {
+    if (!getToken()) return;
+    try {
+      const response = await apiFetch(`/${id}/check-in-log`);
+      const data = await response.json();
+      if (response.ok) {
+        setLogs(Array.isArray(data.logs) ? data.logs : []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   useEffect(() => {
+    loadEvent();
     loadAttendees('');
+    loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadEvent({ quiet: true });
+      loadAttendees(attendeeQuery);
+      loadLogs();
+    }, POLL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, attendeeQuery]);
 
   const filteredHint = useMemo(() => {
     if (!attendeeQuery.trim()) return `${attendees.length} attendee(s)`;
@@ -127,6 +163,58 @@ function Event() {
     URL.revokeObjectURL(url);
   }
 
+  async function saveSettings(e) {
+    e.preventDefault();
+    setSettingsBusy(true);
+    setSettingsMsg('');
+    try {
+      const response = await apiFetch(`/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status,
+          capacity: capacity === '' ? null : Number(capacity),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setSettingsMsg(data.error || 'Failed to save settings');
+        return;
+      }
+      if (data.event) applyEvent(data.event);
+      setSettingsMsg('Settings saved');
+    } catch (err) {
+      console.error(err);
+      setSettingsMsg('Failed to save settings');
+    } finally {
+      setSettingsBusy(false);
+      setTimeout(() => setSettingsMsg(''), 2500);
+    }
+  }
+
+  async function undoCheckIn(attendeeId) {
+    setUndoBusyId(attendeeId);
+    try {
+      const response = await apiFetch(
+        `/${id}/attendees/${attendeeId}/undo-checkin`,
+        { method: 'POST' }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        setAttendeesError(data.error || 'Failed to undo check-in');
+        return;
+      }
+      if (typeof data.registered === 'number') setRegistered(data.registered);
+      if (typeof data.checked_in === 'number') setCheckedIn(data.checked_in);
+      await loadAttendees(attendeeQuery);
+      await loadLogs();
+    } catch (err) {
+      console.error(err);
+      setAttendeesError('Failed to undo check-in');
+    } finally {
+      setUndoBusyId('');
+    }
+  }
+
   return (
     <Layout>
       <div className="flex w-full flex-col gap-4">
@@ -139,7 +227,7 @@ function Event() {
             ← Back to your events
           </Button>
           <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
-            Organizer
+            Organizer · live
           </span>
         </div>
 
@@ -149,7 +237,9 @@ function Event() {
               {loading ? 'Loading...' : name}
             </h1>
             {!loading && !error && (
-              <p className="text-sm text-text-muted">Organizer event dashboard</p>
+              <p className="text-sm text-text-muted">
+                Organizer event dashboard (auto-refreshes)
+              </p>
             )}
           </Card.Header>
 
@@ -180,13 +270,49 @@ function Event() {
                   </div>
                   <div className="rounded-lg bg-background p-4">
                     <p className="text-sm text-text-muted">Registered</p>
-                    <p className="mt-1 font-medium text-text">{registered}</p>
+                    <p className="mt-1 font-medium text-text">
+                      {registered}
+                      {capacity !== '' ? ` / ${capacity}` : ''}
+                    </p>
                   </div>
                   <div className="rounded-lg bg-background p-4">
                     <p className="text-sm text-text-muted">Signed In</p>
                     <p className="mt-1 font-medium text-text">{checkedIn}</p>
                   </div>
                 </div>
+
+                <form
+                  onSubmit={saveSettings}
+                  className="rounded-lg border border-border bg-background p-4 flex flex-col gap-3"
+                >
+                  <p className="text-sm font-medium text-text">Registration controls</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <SelectField
+                      id="event-status"
+                      label="Status"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                    >
+                      <option value="draft">Draft (hidden from signup)</option>
+                      <option value="live">Live (accepting registrations)</option>
+                      <option value="closed">Closed</option>
+                    </SelectField>
+                    <FormField
+                      id="event-capacity"
+                      label="Capacity (blank = unlimited)"
+                      type="number"
+                      placeholder="e.g. 100"
+                      value={capacity}
+                      onChange={(e) => setCapacity(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" variant="secondary" disabled={settingsBusy}>
+                    {settingsBusy ? 'Saving...' : 'Save settings'}
+                  </Button>
+                  {settingsMsg && (
+                    <p className="text-sm text-text-muted">{settingsMsg}</p>
+                  )}
+                </form>
 
                 <div className="rounded-lg border border-border bg-background p-4">
                   <p className="text-sm font-medium text-text">
@@ -216,7 +342,7 @@ function Event() {
                   className="w-full"
                   onClick={() => navigate(`/org/events/${id}/check-in`)}
                 >
-                  Open check-in scanner
+                  Open check-in / kiosk
                 </Button>
               </div>
             )}
@@ -271,6 +397,7 @@ function Event() {
                         <th className="px-3 py-2 font-medium">Name</th>
                         <th className="px-3 py-2 font-medium">Email</th>
                         <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -287,11 +414,56 @@ function Event() {
                               {a.checked_in ? 'Checked in' : 'Registered'}
                             </span>
                           </td>
+                          <td className="px-3 py-2">
+                            {a.checked_in ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={undoBusyId === a.id}
+                                onClick={() => undoCheckIn(a.id)}
+                              >
+                                {undoBusyId === a.id ? 'Undoing...' : 'Undo'}
+                              </Button>
+                            ) : (
+                              <span className="text-text-muted">—</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              )}
+            </Card.Body>
+          </Card>
+        )}
+
+        {!loading && !error && (
+          <Card>
+            <Card.Header>
+              <h2 className="text-lg font-semibold text-text">Check-in audit log</h2>
+              <p className="text-sm text-text-muted">Latest 50 actions</p>
+            </Card.Header>
+            <Card.Body>
+              {logs.length === 0 ? (
+                <p className="text-sm text-text-muted">No check-ins yet.</p>
+              ) : (
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {logs.map((log) => (
+                    <li key={log.id} className="px-3 py-2 text-sm">
+                      <p className="text-text">
+                        <span className="font-medium">
+                          {log.action === 'undo' ? 'Undo' : 'Check-in'}
+                        </span>{' '}
+                        · {log.attendee_name}
+                      </p>
+                      <p className="text-text-muted">
+                        {new Date(log.created_at).toLocaleString()}
+                        {log.organizer_name ? ` · by ${log.organizer_name}` : ''}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card.Body>
           </Card>

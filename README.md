@@ -10,7 +10,10 @@ A full-stack event management app for creating events, registering attendees, se
 - **Shareable register links** — `/e/:id/register` (copy from organizer dashboard)
 - **Attendee list** — search + CSV export on the organizer event page
 - **Signed QR codes** — HMAC-bound to event + attendee (`v1.…`); legacy hex tokens still work
-- **QR check-in** — organizer-only scanner under `/org/events/:id/check-in`
+- **Kiosk check-in** — fullscreen scanner, success/fail sounds, cooldown, live counts
+- **Undo + audit log** — reverse a check-in; see who/when on the event page
+- **Live dashboard** — counts/attendees refresh while scanning
+- **Capacity & status** — draft / live / closed; optional max attendees
 - **Health checks** — backend reports database and email provider status
 
 ### Frontend routes
@@ -47,6 +50,7 @@ eventMMSys/
 │   ├── schema.sql            # Fresh-install schema
 │   ├── schema_supabase.sql   # Safe migration for existing Supabase DBs
 │   ├── schema_p1.sql         # Adds starts_at / ends_at / timezone
+│   ├── schema_p2.sql         # Capacity, status, check_in_logs
 │   └── package.json
 ├── frontEnd/screen/
 │   ├── src/
@@ -63,9 +67,9 @@ eventMMSys/
 
 ## Database Schema
 
-Prefer running `backEnd/schema_supabase.sql` in the Supabase SQL Editor (handles existing tables). Fresh installs can use `backEnd/schema.sql`. Then run `backEnd/schema_p1.sql` for scheduling columns.
+Prefer running `backEnd/schema_supabase.sql` in the Supabase SQL Editor (handles existing tables). Fresh installs can use `backEnd/schema.sql`. Then run `schema_p1.sql` and `schema_p2.sql`.
 
-Core tables: `organizers`, `events` (`organizer_id`, `starts_at`, `ends_at`, `timezone`), `attendees`.
+Core tables: `organizers`, `events` (schedule + `capacity`/`status`), `attendees`, `check_in_logs`.
 
 ## API Endpoints
 
@@ -79,6 +83,9 @@ Core tables: `organizers`, `events` (`organizer_id`, `starts_at`, `ends_at`, `ti
 | `POST` | `/addEvent` | Yes | Create event (`starts_at`, `ends_at`, `timezone`) |
 | `GET` | `/:id` | No | Get event by ID |
 | `GET` | `/:id/attendees?q=` | Yes | List/search attendees (owner only) |
+| `GET` | `/:id/check-in-log` | Yes | Recent check-in / undo audit log |
+| `POST` | `/:id/attendees/:attendeeId/undo-checkin` | Yes | Undo a check-in |
+| `PATCH` | `/:id` | Yes | Update capacity / status |
 | `POST` | `/:id/register` | No | Register attendee + email signed QR |
 | `POST` | `/:id/signin` | Yes | Check in via QR token (owner only) |
 
@@ -91,7 +98,7 @@ Core tables: `organizers`, `events` (`organizer_id`, `starts_at`, `ends_at`, `ti
 
 ### 1. Database
 
-Run `backEnd/schema_supabase.sql` (or `schema.sql`), then `backEnd/schema_p1.sql`, in your Postgres / Supabase SQL editor.
+Run `schema_supabase.sql` (or `schema.sql`), then `schema_p1.sql` and `schema_p2.sql`, in your Postgres / Supabase SQL editor.
 
 ### 2. Backend
 
@@ -194,12 +201,12 @@ Open `http://localhost:5173`, register an organizer, then create events.
 ### Database (Supabase)
 
 1. Create a Supabase project
-2. Run `backEnd/schema_supabase.sql`, then `backEnd/schema_p1.sql`
+2. Run `schema_supabase.sql`, then `schema_p1.sql` and `schema_p2.sql`
 3. Copy the connection string into `DATABASE_URL` on Render
 
 ### Deploy checklist
 
-- [ ] Supabase: `schema_supabase.sql` + `schema_p1.sql` applied
+- [ ] Supabase: `schema_supabase.sql` + `schema_p1.sql` + `schema_p2.sql` applied
 - [ ] Render: `DATABASE_URL`, `DATABASE_SSL=true`, `JWT_SECRET`
 - [ ] Render: `RESEND_API_KEY` + `RESEND_FROM` (not Gmail SMTP)
 - [ ] Render: `FRONTEND_URL` = Vercel URL

@@ -55,7 +55,7 @@ app.set('views', path.join(__dirname));
 app.set('view engine', 'ejs');
 
 const EVENT_PUBLIC_COLUMNS =
-  'id, name, date, starts_at, ends_at, timezone, description, created_at, registered, checked_in';
+  'id, name, date, starts_at, ends_at, timezone, description, created_at, registered, checked_in, capacity, status';
 
 function sendValidationErrors(req, res) {
   const errors = validationResult(req);
@@ -76,6 +76,26 @@ async function assertEventOwner(eventId, organizerId) {
 
 function dateFromIso(iso) {
   return new Date(iso).toISOString().slice(0, 10);
+}
+
+function parseCapacity(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    const err = new Error('Capacity must be a positive integer or empty');
+    err.status = 400;
+    throw err;
+  }
+  return n;
+}
+
+async function writeCheckInLog({ eventId, attendeeId, organizerId, action }) {
+  const id = crypto.randomBytes(16).toString('hex');
+  await db.query(
+    `INSERT INTO check_in_logs (id, event_id, attendee_id, organizer_id, action)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, eventId, attendeeId, organizerId, action]
+  );
 }
 
 app.get('/health', async (req, res) => {
@@ -148,12 +168,6 @@ app.post(
         return res.status(500).json({
           error:
             'Database missing organizers table. Run backEnd/schema_supabase.sql in Supabase SQL Editor.',
-        });
-      }
-      if (error.code === 'JWT_SECRET_MISSING') {
-        return res.status(500).json({
-          error:
-            'Server misconfigured: set JWT_SECRET in backEnd/.env (or host env vars) and restart.',
         });
       }
       console.error('Register failed:', error.code || error.name, error.message);
@@ -244,6 +258,10 @@ app.post(
       }
       return true;
     }),
+    check('status')
+      .optional()
+      .isIn(['draft', 'live', 'closed'])
+      .withMessage('Status must be draft, live, or closed'),
     check('created_at', 'Date must be valid').isISO8601().toDate(),
   ],
   async (req, res) => {
@@ -255,10 +273,12 @@ app.post(
       const endsAt = new Date(req.body.ends_at).toISOString();
       const eventDate = dateFromIso(startsAt);
       const timezone = req.body.timezone || 'UTC';
+      const capacity = parseCapacity(req.body.capacity);
+      const status = req.body.status || 'live';
 
       const query = `INSERT INTO events
-        (id, organizer_id, name, date, starts_at, ends_at, timezone, description, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
+        (id, organizer_id, name, date, starts_at, ends_at, timezone, description, created_at, capacity, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`;
       const values = [
         token,
         req.organizer.id,
@@ -269,16 +289,21 @@ app.post(
         timezone,
         req.body.description,
         req.body.created_at,
+        capacity,
+        status,
       ];
 
       await db.query(query, values);
       res.status(201).json({ message: 'Your event has been added', id: token });
     } catch (error) {
       console.error(error);
+      if (error.status === 400) {
+        return res.status(400).json({ error: error.message });
+      }
       if (error.code === '42703') {
         return res.status(500).json({
           error:
-            'Database missing starts_at/ends_at columns. Run backEnd/schema_p1.sql in Supabase.',
+            'Database missing P1/P2 columns. Run schema_p1.sql and schema_p2.sql in Supabase.',
         });
       }
       res.status(400).json({ error: 'Failed to create event' });
@@ -298,6 +323,64 @@ app.get('/getEvents', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
+
+app.patch(
+  '/:id',
+  requireAuth,
+  [
+    check('status')
+      .optional()
+      .isIn(['draft', 'live', 'closed'])
+      .withMessage('Status must be draft, live, or closed'),
+  ],
+  async (req, res) => {
+    if (sendValidationErrors(req, res)) return;
+
+    try {
+      const id = req.params.id;
+      const owned = await assertEventOwner(id, req.organizer.id);
+      if (!owned) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const updates = [];
+      const values = [];
+      let i = 1;
+
+      if (Object.prototype.hasOwnProperty.call(req.body, 'capacity')) {
+        updates.push(`capacity = $${i++}`);
+        values.push(parseCapacity(req.body.capacity));
+      }
+      if (req.body.status) {
+        updates.push(`status = $${i++}`);
+        values.push(req.body.status);
+      }
+
+      if (!updates.length) {
+        return res.status(400).json({ error: 'No updates provided' });
+      }
+
+      values.push(id);
+      const result = await db.query(
+        `UPDATE events SET ${updates.join(', ')} WHERE id = $${i}
+         RETURNING ${EVENT_PUBLIC_COLUMNS}`,
+        values
+      );
+      res.status(200).json({ event: result.rows[0] });
+    } catch (error) {
+      console.error(error);
+      if (error.status === 400) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.code === '42703') {
+        return res.status(500).json({
+          error: 'Database missing capacity/status. Run schema_p2.sql in Supabase.',
+        });
+      }
+      res.status(500).json({ error: 'Failed to update event' });
+    }
+  }
+);
 
 app.get('/:id/attendees', requireAuth, async (req, res) => {
   try {
@@ -335,6 +418,91 @@ app.get('/:id/attendees', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/:id/check-in-log', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const owned = await assertEventOwner(id, req.organizer.id);
+    if (!owned) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const result = await db.query(
+      `SELECT l.id, l.action, l.created_at, l.attendee_id,
+              a.name AS attendee_name, a.email AS attendee_email,
+              o.name AS organizer_name
+       FROM check_in_logs l
+       JOIN attendees a ON a.id = l.attendee_id
+       LEFT JOIN organizers o ON o.id = l.organizer_id
+       WHERE l.event_id = $1
+       ORDER BY l.created_at DESC
+       LIMIT 50`,
+      [id]
+    );
+    res.status(200).json({ logs: result.rows });
+  } catch (error) {
+    console.error(error);
+    if (error.code === '42P01') {
+      return res.status(500).json({
+        error: 'Database missing check_in_logs. Run schema_p2.sql in Supabase.',
+      });
+    }
+    res.status(500).json({ error: 'Failed to load check-in log' });
+  }
+});
+
+app.post('/:id/attendees/:attendeeId/undo-checkin', requireAuth, async (req, res) => {
+  try {
+    const { id, attendeeId } = req.params;
+    const owned = await assertEventOwner(id, req.organizer.id);
+    if (!owned) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const undone = await db.query(
+      `UPDATE attendees
+       SET checked_in = false
+       WHERE id = $1 AND event_id = $2 AND checked_in = true
+       RETURNING id, name, email`,
+      [attendeeId, id]
+    );
+
+    if (!undone.rowCount) {
+      return res.status(409).json({ error: 'Attendee is not checked in' });
+    }
+
+    await db.query(
+      'UPDATE events SET checked_in = GREATEST(checked_in - 1, 0) WHERE id = $1',
+      [id]
+    );
+
+    try {
+      await writeCheckInLog({
+        eventId: id,
+        attendeeId,
+        organizerId: req.organizer.id,
+        action: 'undo',
+      });
+    } catch (logError) {
+      console.error('Failed to write undo log:', logError.message);
+    }
+
+    const counts = await db.query(
+      'SELECT registered, checked_in FROM events WHERE id = $1',
+      [id]
+    );
+
+    res.status(200).json({
+      message: 'Check-in undone',
+      attendee: undone.rows[0],
+      registered: counts.rows[0].registered,
+      checked_in: counts.rows[0].checked_in,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to undo check-in' });
+  }
+});
+
 app.post('/:id/signin', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
@@ -364,7 +532,7 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
       `UPDATE attendees
        SET checked_in = true
        WHERE qr_token = $1 AND event_id = $2 AND checked_in = false
-       RETURNING id`,
+       RETURNING id, name, email`,
       [qrToken, id]
     );
 
@@ -373,11 +541,35 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
         'UPDATE events SET checked_in = checked_in + 1 WHERE id = $1',
         [id]
       );
-      return res.status(200).json({ message: "You're checked in" });
+
+      try {
+        await writeCheckInLog({
+          eventId: id,
+          attendeeId: checkedIn.rows[0].id,
+          organizerId: req.organizer.id,
+          action: 'check_in',
+        });
+      } catch (logError) {
+        console.error('Failed to write check-in log:', logError.message);
+      }
+
+      const counts = await db.query(
+        'SELECT registered, checked_in, capacity, status FROM events WHERE id = $1',
+        [id]
+      );
+
+      return res.status(200).json({
+        message: "You're checked in",
+        attendee: checkedIn.rows[0],
+        registered: counts.rows[0].registered,
+        checked_in: counts.rows[0].checked_in,
+        capacity: counts.rows[0].capacity,
+        status: counts.rows[0].status,
+      });
     }
 
     const existing = await db.query(
-      'SELECT checked_in FROM attendees WHERE qr_token = $1 AND event_id = $2',
+      'SELECT id, name, checked_in FROM attendees WHERE qr_token = $1 AND event_id = $2',
       [qrToken, id]
     );
 
@@ -385,7 +577,13 @@ app.post('/:id/signin', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Invalid QR code for this event' });
     }
 
-    return res.status(409).json({ error: "You're already checked in" });
+    return res.status(409).json({
+      error: "You're already checked in",
+      attendee: {
+        id: existing.rows[0].id,
+        name: existing.rows[0].name,
+      },
+    });
   } catch (error) {
     console.error(error);
     if (error.code === 'QR_SECRET_MISSING') {
@@ -426,13 +624,24 @@ app.post(
 
     try {
       const id = req.params.id;
-      const checkServer = await db.query(
-        'SELECT EXISTS(SELECT 1 FROM events WHERE id = $1) AS exists',
+      const eventResult = await db.query(
+        'SELECT id, name, status, capacity, registered FROM events WHERE id = $1',
         [id]
       );
 
-      if (!checkServer.rows[0].exists) {
+      if (!eventResult.rows.length) {
         return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const event = eventResult.rows[0];
+      if (event.status === 'draft') {
+        return res.status(403).json({ error: 'Registration is not open yet' });
+      }
+      if (event.status === 'closed') {
+        return res.status(403).json({ error: 'Registration is closed' });
+      }
+      if (event.capacity != null && event.registered >= event.capacity) {
+        return res.status(409).json({ error: 'Event is full' });
       }
 
       const attendeesId = crypto.randomBytes(16).toString('hex');
@@ -444,14 +653,12 @@ app.post(
       await db.query(query, values);
 
       const dataToSend = await qrcode.toBuffer(token);
-      const serverName = await db.query('SELECT name FROM events WHERE id = $1', [id]);
-      const nameOfEvent = serverName.rows[0].name;
 
       let emailSent = false;
       try {
         await sendRegistrationEmail({
           to: values[2],
-          eventName: nameOfEvent,
+          eventName: event.name,
           qrBuffer: dataToSend,
         });
         emailSent = true;
@@ -476,6 +683,11 @@ app.post(
       if (error.code === 'QR_SECRET_MISSING') {
         return res.status(500).json({
           error: 'Server misconfigured: set JWT_SECRET or QR_HMAC_SECRET',
+        });
+      }
+      if (error.code === '42703') {
+        return res.status(500).json({
+          error: 'Database missing status/capacity. Run schema_p2.sql in Supabase.',
         });
       }
       console.error(error);

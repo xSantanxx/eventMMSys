@@ -10,6 +10,8 @@ function RegistrationSys() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [eventName, setEventName] = useState('');
+  const [gateMessage, setGateMessage] = useState('');
+  const [canRegister, setCanRegister] = useState(true);
   const [errors, setErrors] = useState([]);
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,7 +22,24 @@ function RegistrationSys() {
         const response = await fetch(apiUrl(`/${id}`));
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
-          setEventName(data[0].name);
+          const event = data[0];
+          setEventName(event.name);
+          const status = event.status || 'live';
+          const capacity = event.capacity;
+          const registered = event.registered ?? 0;
+          if (status === 'draft') {
+            setCanRegister(false);
+            setGateMessage('Registration is not open yet.');
+          } else if (status === 'closed') {
+            setCanRegister(false);
+            setGateMessage('Registration is closed.');
+          } else if (capacity != null && registered >= capacity) {
+            setCanRegister(false);
+            setGateMessage('This event is full.');
+          } else {
+            setCanRegister(true);
+            setGateMessage('');
+          }
         }
       } catch (err) {
         console.error(err);
@@ -32,6 +51,7 @@ function RegistrationSys() {
 
   async function submitForm(e) {
     e.preventDefault();
+    if (!canRegister) return;
     setSubmitting(true);
     setErrors([]);
     setSuccess('');
@@ -54,10 +74,16 @@ function RegistrationSys() {
         );
         setName('');
         setEmail('');
-      } else if (data.detail) {
-        setErrors([data.detail]);
       } else {
         setErrors([data.error || 'Registration failed. Please try again.']);
+        if (
+          data.error === 'Registration is closed' ||
+          data.error === 'Registration is not open yet' ||
+          data.error === 'Event is full'
+        ) {
+          setCanRegister(false);
+          setGateMessage(data.error);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -92,10 +118,16 @@ function RegistrationSys() {
           </Card.Header>
 
           <Card.Body>
-            <p className="mb-5 text-sm text-text-muted">
-              Fill out the form below. You&apos;ll receive a QR code by email to
-              check in at the event.
-            </p>
+            {gateMessage ? (
+              <p className="mb-5 rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-sm text-error">
+                {gateMessage}
+              </p>
+            ) : (
+              <p className="mb-5 text-sm text-text-muted">
+                Fill out the form below. You&apos;ll receive a QR code by email to
+                check in at the event.
+              </p>
+            )}
 
             <form onSubmit={submitForm} className="flex flex-col gap-4">
               <FormField
@@ -134,7 +166,7 @@ function RegistrationSys() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={submitting || !name || !email}
+                disabled={submitting || !canRegister || !name || !email}
               >
                 {submitting ? 'Registering...' : 'Register'}
               </Button>

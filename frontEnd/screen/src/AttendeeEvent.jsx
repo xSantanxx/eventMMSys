@@ -13,6 +13,9 @@ function AttendeeEvent() {
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [timezone, setTimezone] = useState('UTC');
+  const [status, setStatus] = useState('live');
+  const [capacity, setCapacity] = useState(null);
+  const [registered, setRegistered] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -35,6 +38,9 @@ function AttendeeEvent() {
         setStartsAt(event.starts_at || event.date);
         setEndsAt(event.ends_at || '');
         setTimezone(event.timezone || 'UTC');
+        setStatus(event.status || 'live');
+        setCapacity(event.capacity ?? null);
+        setRegistered(event.registered ?? 0);
       } catch (err) {
         console.error(err);
         setError('Failed to load event details.');
@@ -45,6 +51,17 @@ function AttendeeEvent() {
 
     loadEvent();
   }, [id]);
+
+  const isFull = capacity != null && registered >= capacity;
+  const canRegister = status === 'live' && !isFull;
+  const statusMessage =
+    status === 'draft'
+      ? 'Registration is not open yet.'
+      : status === 'closed'
+        ? 'Registration is closed.'
+        : isFull
+          ? 'This event is full.'
+          : '';
 
   return (
     <Layout>
@@ -95,14 +112,33 @@ function AttendeeEvent() {
                   </div>
                 </div>
 
-                <p className="text-sm text-text-muted">
-                  Register to receive a QR code by email. Bring that code to the
-                  event for check-in.
-                </p>
+                {capacity != null && (
+                  <p className="text-sm text-text-muted">
+                    Spots: {Math.max(capacity - registered, 0)} remaining ({registered}/
+                    {capacity})
+                  </p>
+                )}
 
-                <Link to={`/e/${id}/register`} className="block">
-                  <Button className="w-full">Register for this event</Button>
-                </Link>
+                {statusMessage ? (
+                  <p className="rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-sm text-error">
+                    {statusMessage}
+                  </p>
+                ) : (
+                  <p className="text-sm text-text-muted">
+                    Register to receive a QR code by email. Bring that code to the
+                    event for check-in.
+                  </p>
+                )}
+
+                {canRegister ? (
+                  <Link to={`/e/${id}/register`} className="block">
+                    <Button className="w-full">Register for this event</Button>
+                  </Link>
+                ) : (
+                  <Button className="w-full" disabled>
+                    Registration unavailable
+                  </Button>
+                )}
               </div>
             )}
           </Card.Body>

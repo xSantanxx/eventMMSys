@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS events (
     description TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     registered INTEGER NOT NULL DEFAULT 0,
-    checked_in INTEGER NOT NULL DEFAULT 0
+    checked_in INTEGER NOT NULL DEFAULT 0,
+    capacity INTEGER,
+    status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('draft', 'live', 'closed'))
 );
 
 CREATE TABLE IF NOT EXISTS attendees (
@@ -34,9 +36,19 @@ CREATE TABLE IF NOT EXISTS attendees (
     UNIQUE (event_id, email)
 );
 
+CREATE TABLE IF NOT EXISTS check_in_logs (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    attendee_id TEXT NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+    organizer_id TEXT REFERENCES organizers(id) ON DELETE SET NULL,
+    action TEXT NOT NULL CHECK (action IN ('check_in', 'undo')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_organizer_id ON events(organizer_id);
 CREATE INDEX IF NOT EXISTS idx_attendees_event_id ON attendees(event_id);
 CREATE INDEX IF NOT EXISTS idx_attendees_qr_event ON attendees(qr_token, event_id);
+CREATE INDEX IF NOT EXISTS idx_check_in_logs_event_id ON check_in_logs(event_id, created_at DESC);
 
 -- Migration from older schema (no organizers / organizer_id):
 -- 1) CREATE TABLE organizers (...);

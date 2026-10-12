@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Layout, Card, Button, Modal, FormField } from './components';
+import { Layout, Card, Button, Modal, FormField, SelectField } from './components';
 import {
   apiFetch,
   clearSession,
@@ -36,6 +36,8 @@ function App() {
   const [regDes, setRegDes] = useState('');
   const [regStart, setRegStart] = useState(defaultStartLocal);
   const [regEnd, setRegEnd] = useState(defaultEndLocal);
+  const [regCapacity, setRegCapacity] = useState('');
+  const [regStatus, setRegStatus] = useState('live');
   const [errors, setErrors] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [events, setEvents] = useState([]);
@@ -172,6 +174,8 @@ function App() {
           starts_at: startsAt,
           ends_at: endsAt,
           timezone: browserTimezone(),
+          capacity: regCapacity === '' ? null : Number(regCapacity),
+          status: regStatus,
           created_at: new Date().toISOString(),
         }),
       });
@@ -193,6 +197,8 @@ function App() {
         setRegDes('');
         setRegStart(defaultStartLocal());
         setRegEnd(defaultEndLocal());
+        setRegCapacity('');
+        setRegStatus('live');
         setFormOpen(false);
         await loadEvents();
         if (data.id) {
@@ -361,6 +367,24 @@ function App() {
             <p className="text-xs text-text-muted">
               Times use your local timezone ({browserTimezone()}).
             </p>
+            <FormField
+              id="event-capacity"
+              label="Capacity (optional)"
+              type="number"
+              placeholder="Leave blank for unlimited"
+              value={regCapacity}
+              onChange={(e) => setRegCapacity(e.target.value)}
+            />
+            <SelectField
+              id="event-status"
+              label="Status"
+              value={regStatus}
+              onChange={(e) => setRegStatus(e.target.value)}
+            >
+              <option value="draft">Draft</option>
+              <option value="live">Live</option>
+              <option value="closed">Closed</option>
+            </SelectField>
 
             {errors.length > 0 && (
               <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2">
